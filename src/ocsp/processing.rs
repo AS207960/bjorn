@@ -50,6 +50,15 @@ pub fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssu
         };
     }
 
+    if let Some(nonce) = req.request.nonce {
+        if nonce.len() == 0 || nonce.len() > 32 {
+            return super::types::OCSPResponse {
+                status: super::types::OCSPResponseStatus::MalformedRequest,
+                response: None,
+            };
+        }
+    }
+
     if let Some(acceptable_responses) = req.request.acceptable_responses {
         if !acceptable_responses.contains(&super::types::OCSPResponseTypeTag::BasicResponse) {
             return super::types::OCSPResponse {
