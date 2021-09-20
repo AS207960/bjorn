@@ -1,0 +1,6 @@
+django
+grpcio-tools
+django-grpc
+cryptography
+requests
+

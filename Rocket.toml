@@ -1,0 +1,15 @@
+[development]
+external_uri = "http://localhost:8000"
+tos_uri = "https://as207960.net/assets/docs/AS207960_T_C_s.pdf"
+website_uri = "https://as207960.net"
+caa_identities = ["bjorn.as207960.net"]
+ca_grpc_uri = "http://[::1]:50051"
+
+[[development.ocsp_issuers]]
+cert_id = "a"
+issuer_cert_file = "python-ca/ca-certs/intermediate-crt.pem"
+signer_pkcs12_file = "ocsp-signer.p12"
+grpc_uri = "http://[::1]:50051"
+
+[global.databases]
+db = { url = "postgres://postgres@localhost/bjorn" }

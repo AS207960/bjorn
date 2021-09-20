@@ -1,0 +1,265 @@
+syntax = "proto3";
+
+package cert_order;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+enum IdentifierType {
+  UnknownIdentifier = 0;
+  DNSIdentifier = 1;
+  IPIdentifier = 2;
+  EmailIdentifier = 3;
+}
+
+message Identifier {
+  IdentifierType id_type = 1;
+  string identifier = 2;
+}
+
+enum ErrorType {
+    ServerInternalError = 0;
+    AccountDoesNotExistError = 1;
+    AlreadyRevokedError = 2;
+    BadCSRError = 3;
+    BadNonceError = 4;
+    BadPublicKeyError = 5;
+    BadRevocationReasonError = 6;
+    BadSignatureAlgorithmError = 7;
+    CAAError = 8;
+    CompoundError = 9;
+    ConnectionError = 10;
+    DNSError = 11;
+    ExternalAccountRequiredError = 12;
+    IncorrectResponseError = 13;
+    InvalidContactError = 14;
+    MalformedError = 15;
+    OrderNotReadyError = 16;
+    RateLimitedError = 17;
+    RejectedIdentifierError = 18;
+    TLSError = 19;
+    UnauthorizedError = 20;
+    UnsupportedContactError = 21;
+    UnsupportedIdentifierError = 22;
+    UserActionRequiredError = 23;
+    AutoRenewalCanceledError = 24;
+    AutoRenewalExpiredError = 25;
+    AutoRenewalCancellationInvalidError = 26;
+    AutoRenewalRevocationNotSupportedError = 27;
+}
+
+message Error {
+  ErrorType error_type = 1;
+  string title = 2;
+  uint32 status = 3;
+  string detail = 4;
+  google.protobuf.StringValue instance = 5;
+  repeated Error sub_problems = 6;
+  Identifier identifier = 7;
+}
+
+message ErrorResponse {
+  repeated Error errors = 1;
+}
+
+service CA {
+  rpc ValidateEAB (ValidateEABRequest) returns (ValidateEABResponse) {}
+  rpc CreateOrder (CreateOrderRequest) returns (OrderResponse) {}
+  rpc GetOrder (IDRequest) returns (Order) {}
+  rpc FinalizeOrder (FinalizeOrderRequest) returns (OrderResponse) {}
+  rpc GetAuthorization (IDRequest) returns (Authorization) {}
+  rpc DeactivateAuthorization (IDRequest) returns (AuthorizationResponse) {}
+  rpc GetChallenge (ChallengeIDRequest) returns (Challenge) {}
+  rpc CompleteChallenge (CompleteChallengeRequest) returns (ChallengeResponse) {}
+  rpc GetCertificate (IDRequest) returns (CertificateChainResponse) {}
+}
+
+service OCSP {
+  rpc CheckCert (CheckCertRequest) returns (CheckCertResponse) {}
+}
+
+service Validator {
+  rpc ValidateHTTP01 (KeyValidationRequest) returns (ValidationResult) {}
+  rpc ValidateDNS01 (KeyValidationRequest) returns (ValidationResult) {}
+}
+
+message KeyValidationRequest {
+  string token = 1;
+  string account_thumbprint = 2;
+  string identifier = 3;
+}
+
+message ValidationResult {
+  bool valid = 1;
+  ErrorResponse error = 2;
+}
+
+enum EABSignatureMethod {
+  HS256 = 0;
+  HS384 = 1;
+  HS512 = 2;
+  HS1 = 3;
+}
+
+message ValidateEABRequest {
+  string kid = 1;
+  EABSignatureMethod signature_method = 2;
+  bytes signed_data = 3;
+  bytes signature = 4;
+}
+
+message ValidateEABResponse {
+  bool valid = 1;
+}
+
+message CreateOrderRequest {
+  repeated Identifier identifiers = 1;
+  google.protobuf.Timestamp not_before = 2;
+  google.protobuf.Timestamp not_after = 3;
+  string account_id = 4;
+  google.protobuf.StringValue eab_id = 5;
+}
+
+message OrderResponse {
+  oneof result {
+    Order order = 1;
+    ErrorResponse error = 2;
+  }
+}
+
+message AuthorizationResponse {
+  oneof result {
+    Authorization authorization = 1;
+    ErrorResponse error = 2;
+  }
+}
+
+message ChallengeResponse {
+  oneof result {
+    Challenge challenge = 1;
+    ErrorResponse error = 2;
+  }
+}
+
+message IDRequest {
+  bytes id = 1;
+}
+
+message ChallengeIDRequest {
+  bytes id = 1;
+  bytes auth_id = 2;
+}
+
+message CompleteChallengeRequest {
+  bytes id = 1;
+  bytes auth_id = 2;
+  string account_thumbprint = 3;
+}
+
+message FinalizeOrderRequest {
+  bytes id = 1;
+  bytes csr = 2;
+}
+
+enum OrderStatus {
+  OrderPending = 0;
+  OrderReady = 1;
+  OrderProcessing = 2;
+  OrderValid = 3;
+  OrderInvalid = 4;
+}
+
+message Order {
+  bytes id = 1;
+  repeated Identifier identifiers = 2;
+  google.protobuf.Timestamp not_before = 3;
+  google.protobuf.Timestamp not_after = 4;
+  google.protobuf.Timestamp expires = 5;
+  OrderStatus status = 6;
+  repeated bytes authorizations = 7;
+  google.protobuf.BytesValue certificate_id = 8;
+}
+
+enum AuthorizationStatus {
+  AuthorizationPending = 0;
+  AuthorizationValid = 1;
+  AuthorizationInvalid = 2;
+  AuthorizationDeactivated = 3;
+  AuthorizationExpired = 4;
+  AuthorizationRevoked = 5;
+}
+
+message Authorization {
+  bytes id = 1;
+  AuthorizationStatus status = 2;
+  google.protobuf.Timestamp expires = 3;
+  Identifier identifier = 4;
+  repeated Challenge challenges = 5;
+  google.protobuf.BoolValue wildcard = 6;
+}
+
+enum ChallengeType {
+  ChallengeHTTP01 = 0;
+  ChallengeDNS01 = 1;
+}
+
+enum ChallengeStatus {
+  ChallengePending = 0;
+  ChallengeProcessing = 1;
+  ChallengeValid = 2;
+  ChallengeInvalid = 3;
+}
+
+message Challenge {
+  bytes id = 1;
+  ChallengeType type = 2;
+  ChallengeStatus status = 3;
+  google.protobuf.Timestamp validated = 4;
+  ErrorResponse error = 5;
+  google.protobuf.StringValue token = 6;
+}
+
+message CertificateChain {
+  repeated bytes certificates = 1;
+}
+
+message CertificateChainResponse {
+  CertificateChain primary_chain = 1;
+  repeated CertificateChain alternative_chains = 2;
+}
+
+message CheckCertRequest {
+  string issuer_id = 1;
+  bytes serial_number = 2;
+}
+
+message CheckCertResponse {
+  CertStatus status = 1;
+  RevocationReason revocation_reason = 2;
+  google.protobuf.Timestamp revocation_timestamp = 3;
+  google.protobuf.Timestamp this_update = 4;
+  google.protobuf.Timestamp next_update = 5;
+  google.protobuf.Timestamp archive_cutoff = 6;
+  google.protobuf.Timestamp invalidity_date = 7;
+}
+
+enum CertStatus {
+  CertUnknown = 0;
+  CertGood = 1;
+  CertRevoked = 2;
+  CertUnissued = 3;
+}
+
+enum RevocationReason {
+    RevocationUnknown = 0;
+    RevocationUnspecified = 1;
+    RevocationKeyCompromise = 2;
+    RevocationCACompromise = 3;
+    RevocationAffiliationChanged = 4;
+    RevocationSuperseded = 5;
+    RevocationCessationOfOperation = 6;
+    RevocationCertificateHold = 7;
+    RevocationRemoveFromCRL = 8;
+    RevocationPrivilegeWithdrawn = 9;
+    RevocationAACompromise = 10;
+}
