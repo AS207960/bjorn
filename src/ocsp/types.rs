@@ -345,7 +345,7 @@ impl GeneralName {
             openssl_sys::init();
             let len = std::cmp::min(der.len(), libc::c_long::MAX as usize) as libc::c_long;
             Ok(Self(foreign_types::ForeignType::from_ptr(
-                proto::cvt_p(proto::d2i_GENERAL_NAME(std::ptr::null_mut(), &mut der.as_ptr(), len))?
+                crate::util::cvt_p(proto::d2i_GENERAL_NAME(std::ptr::null_mut(), &mut der.as_ptr(), len))?
             )))
         }
     }
@@ -355,9 +355,9 @@ pub struct X509Name(pub openssl::x509::X509Name);
 
 pub fn x509_name_to_der(name: *mut openssl_sys::X509_NAME) -> Result<Vec<u8>, openssl::error::ErrorStack> {
     unsafe {
-        let len = proto::cvt(proto::i2d_X509_NAME(name, std::ptr::null_mut()))?;
+        let len = crate::util::cvt(proto::i2d_X509_NAME(name, std::ptr::null_mut()))?;
         let mut buf = vec![0; len as usize];
-        proto::cvt(proto::i2d_X509_NAME(name, &mut buf.as_mut_ptr()))?;
+        crate::util::cvt(proto::i2d_X509_NAME(name, &mut buf.as_mut_ptr()))?;
         Ok(buf)
     }
 }
@@ -374,7 +374,7 @@ impl X509Name {
             openssl_sys::init();
             let len = std::cmp::min(der.len(), libc::c_long::MAX as usize) as libc::c_long;
             Ok(Self(foreign_types::ForeignType::from_ptr(
-                proto::cvt_p(proto::d2i_X509_NAME(std::ptr::null_mut(), &mut der.as_ptr(), len))?
+                crate::util::cvt_p(proto::d2i_X509_NAME(std::ptr::null_mut(), &mut der.as_ptr(), len))?
             )))
         }
     }
@@ -394,7 +394,7 @@ impl Asn1Object {
             openssl_sys::init();
             let len = std::cmp::min(der.len(), libc::c_long::MAX as usize) as libc::c_long;
             Ok(Self(foreign_types::ForeignType::from_ptr(
-                proto::cvt_p(proto::d2i_ASN1_OBJECT(std::ptr::null_mut(), &mut der.as_ptr(), len))?
+                crate::util::cvt_p(proto::d2i_ASN1_OBJECT(std::ptr::null_mut(), &mut der.as_ptr(), len))?
             )))
         }
     }

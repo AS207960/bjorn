@@ -1165,6 +1165,7 @@ pub fn challenge_post(
                 id: cid,
                 auth_id: existing_authz.ca_id.clone(),
                 account_thumbprint,
+                account_uri: format!("{}{}", conf.external_uri, acct_key.inner.kid()),
             }))).into_inner();
             std::mem::drop(locked_client);
 

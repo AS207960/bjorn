@@ -26,6 +26,10 @@ A basic diagram of their inter-working is as follows;
 
 ```text
                           End user <-> CA boundary 
+                                    |       *------------*
+                                    |       | PostgreSQL | <--------------
+                                    |       *------------*                \ 
+                                    |                                      |
 *-------------*                     |                                  *-------*
 | ACME Client | ---ACME over HTTPS--|--                            --> | Björn | ------
 *-------------*                     |  \    *-----------------*   /    *-------*       \   
@@ -36,35 +40,39 @@ A basic diagram of their inter-working is as follows;
 *------------*                      |                                  *-------*     \  |
                                     |                                            gRPC | |
                                     |                                                /  |
-*-------------*                     |      *-------*               *------------* <--   |
-| User server | <--http-01/dns-01---|------| Frida | <----gRPC---- | Backend CA |      /
-*-------------*                     |      *-------*               *------------* <----
+*-------------*    |  http-01  |    |      *-------*               *------------* <--   |
+| User server | <--|   dns-01  |----|----- | Frida | <----gRPC---- | Backend CA |      /
+*-------------*    |tls-alpn-01|    |      *-------*               *------------* <----
 ```
 
 ## Repositry layout
 
-| Directory           | Contents                                        |
-|---------------------|-------------------------------------------------|
-| `migrations`        | SQL database migrations                         |
-| `proto`             | gRPC definitions for inter-working              |
-| `python-ca`         | Example CA backend **DO NOT USE IN PRODUCTION** |
-| `src`               | Common Rust source code                         |
-| `src/bin/acme`      | The Björn binary                                |
-| `src/acme`          | Björn specific utilities                        |
-| `src/bin/ocsp`      | The Benny binary                                |
-| `src/ocsp`          | Benny specific utilities                        |
-| `src/bin/validator` | The Frida binary                                |
-| `src/validator`     | Frida specific utilities                        |
+| Directory              | Contents                                        |
+|------------------------|-------------------------------------------------|
+| `migrations`           | SQL database migrations                         |
+| `proto`                | gRPC definitions for inter-working              |
+| `python-ca`            | Example CA backend **DO NOT USE IN PRODUCTION** |
+| `src`                  | Common Rust source code                         |
+| `src/bin/acme.rs`      | The Björn binary                                |
+| `src/acme`             | Björn specific utilities                        |
+| `src/bin/ocsp.rs`      | The Benny binary                                |
+| `src/ocsp`             | Benny specific utilities                        |
+| `src/bin/validator.rs` | The Frida binary                                |
+| `src/validator`        | Frida specific utilities                        |
 
 ## Implemented RFCs
 
 * [RFC 6960](https://datatracker.ietf.org/doc/html/rfc6960) - Online Certificate Status Protocol - OCSP
-* [RFC 8954](https://datatracker.ietf.org/doc/html/rfc8954) - Online Certificate Status Protocol (OCSP) Nonce Extension
-* [RFC 8555](https://datatracker.ietf.org/doc/html/rfc8555) - Automatic Certificate Management Environment (ACME)
 * [RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638) - JSON Web Key (JWK) Thumbprint
+* [RFC 8555](https://datatracker.ietf.org/doc/html/rfc8555) - Automatic Certificate Management Environment (ACME)
+* [RFC 8657](https://datatracker.ietf.org/doc/html/rfc8657) - Certification Authority Authorization (CAA) Record Extensions for Account URI and Automatic Certificate Management Environment (ACME) Method Binding
 * [RFC 8659](https://datatracker.ietf.org/doc/html/rfc8659) - DNS Certification Authority Authorization (CAA) Resource Record
+* [RFC 8737](https://datatracker.ietf.org/doc/html/rfc8737) - Automated Certificate Management Environment (ACME) TLS Application-Layer Protocol Negotiation (ALPN) Challenge Extension
+* [RFC 8738](https://datatracker.ietf.org/doc/html/rfc8738) - Automated Certificate Management Environment (ACME) IP Identifier Validation Extension
+* [RFC 8954](https://datatracker.ietf.org/doc/html/rfc8954) - Online Certificate Status Protocol (OCSP) Nonce Extension
+* [draft-shoemaker-caa-ip-01](https://datatracker.ietf.org/doc/html/draft-shoemaker-caa-ip-01) - Certification Authority Authorization (CAA) Validation for IP Addresses
 
-Note: CAA iodef is not yet supported
+Note: CAA iodef and RFC 8657 are not yet supported
 
 ## Setup
 
@@ -238,13 +246,16 @@ in [RFC 5280 § 5.3.1](https://datatracker.ietf.org/doc/html/rfc5280#section-5.3
 
 ### Frida
 
-Frida has two methods; `ValidateHTTP01` and `ValidateDNS01`. They perform
-`http-01` and `dns-01` based validations respectively, along with CAA checking.
+Frida has three methods; `ValidateHTTP01`, `ValidateDNS01`, and `ValidateTLSALPN01`. They perform
+`http-01`, `dns-01`, and `tls-alpn-01` based validations respectively, along with CAA checking.
+
+Frida supports validating `dns` and `ip` identifier types, `email` validation with `email-reply-00` is not supported.
 
 The `KeyValidationRequest` input message contains;
 * `token` - The validation token, generated by the backend CA.
 * `account_thumbprint` - The ACME account thumbprint, provided by Björn.
-* `identifier` - The domain name to be validated.
+* `identifier` - The name to be validated.
+* `account_uri` - The URI of the account requesting validation for RFC 8657 purposes, provided by Björn.
 
 The response message contains a boolean indication validation success or
 failure, and in case of failure an error object containing a list of errors

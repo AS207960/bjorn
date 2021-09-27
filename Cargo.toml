@@ -22,6 +22,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 base64 = "0.13"
 lazy_static = "1"
+tokio-openssl = "0.6"
 openssl = "0.10"
 openssl-sys = "0.9"
 log = "0.4"
@@ -32,7 +33,7 @@ url = "2"
 tonic = "0.5"
 prost = "0.8"
 prost-types = "0.8"
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net"] }
 hex = "0.4"
 asn1 = "0.6"
 libc = "0.2"
@@ -41,6 +42,8 @@ pretty_env_logger = "0.4"
 trust-dns-proto = "*"
 trust-dns-resolver = "*"
 reqwest = { version = "0.11", features = ["gzip", "brotli", "deflate"] }
+xml_serde = { git = "https://github.com/as207960/xml-serde", rev = "9fc66f9f5f5927c01b874b17c3e0839169785dff" }
+xmlsec = { path = "../rust-xmlsec" }
 
 [build-dependencies]
 tonic-build = "0.5"

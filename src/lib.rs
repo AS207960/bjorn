@@ -19,6 +19,7 @@ extern crate diesel_derive_enum;
 
 pub(crate) mod types;
 pub(crate) mod util;
+pub(crate) mod iodef;
 pub mod acme;
 pub mod ocsp;
 pub mod validator;

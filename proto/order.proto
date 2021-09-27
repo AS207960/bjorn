@@ -81,12 +81,14 @@ service OCSP {
 service Validator {
   rpc ValidateHTTP01 (KeyValidationRequest) returns (ValidationResult) {}
   rpc ValidateDNS01 (KeyValidationRequest) returns (ValidationResult) {}
+  rpc ValidateTLSALPN01 (KeyValidationRequest) returns (ValidationResult) {}
 }
 
 message KeyValidationRequest {
   string token = 1;
   string account_thumbprint = 2;
-  string identifier = 3;
+  Identifier identifier = 3;
+  google.protobuf.StringValue account_uri = 4;
 }
 
 message ValidationResult {
@@ -154,6 +156,7 @@ message CompleteChallengeRequest {
   bytes id = 1;
   bytes auth_id = 2;
   string account_thumbprint = 3;
+  string account_uri = 4;
 }
 
 message FinalizeOrderRequest {
