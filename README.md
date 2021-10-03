@@ -94,6 +94,7 @@ tos_agreed_to_after = "2021-09-29T00:00:00Z"
 website_uri = "https://as207960.net"
 caa_identities = ["bjorn.as207960.net"]
 ca_grpc_uri = "http://[::1]:50051"
+template_dir = "templates/"
 
 [[development.acme_issuers]]
 cert_id = "a"
@@ -128,6 +129,11 @@ issuance by this CA.
 ##### `ca_grpc_uri`
 The gRPC URL of the CA backend. It should implement the protocol as described
 further down.
+
+##### `template_dir`
+A directory path in which the HTML templates for the index page (for when
+the ACME server is accessed without using an ACME client), and updated 
+ToS agreement pages are stored. 
 
 ##### `acme_issuers`
 A list of issuing certificates for which this server can handle revocation requests.
