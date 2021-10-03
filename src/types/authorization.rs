@@ -34,6 +34,11 @@ impl Default for Status {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AuthorizationCreate {
+    pub identifier: super::identifier::Identifier
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AuthorizationUpdate {
     #[serde(default)]
     pub status: Option<Status>,

@@ -99,7 +99,6 @@ async fn check_caa(
 fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<Identifier, tonic::Status> {
     if let Some(identifier) = identifier {
         Ok(match crate::cert_order::IdentifierType::from_i32(identifier.id_type) {
-            _ => return Err(tonic::Status::invalid_argument("Invalid identifier type specified")),
             Some(crate::cert_order::IdentifierType::DnsIdentifier) => {
                 let is_wild = identifier.identifier.starts_with("*.");
                 if is_wild {
@@ -117,7 +116,8 @@ fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<I
             }
             Some(crate::cert_order::IdentifierType::EmailIdentifier) => {
                 Identifier::Email(identifier.identifier)
-            }
+            },
+            _ => return Err(tonic::Status::invalid_argument("Invalid identifier type specified")),
         })
     } else {
         Err(tonic::Status::invalid_argument("Identifier must be specified"))
@@ -408,11 +408,11 @@ impl crate::cert_order::validator_server::Validator for Validator {
             }
         };
         ssl_ctx_builder.set_verify(openssl::ssl::SslVerifyMode::NONE);
-        ssl_ctx_builder.set_min_proto_version(Some(openssl::ssl::SslVersion::TLS1_2));
-        ssl_ctx_builder.set_alpn_protos(b"\x0aacme-tls/1");
+        ssl_ctx_builder.set_min_proto_version(Some(openssl::ssl::SslVersion::TLS1_2)).unwrap();
+        ssl_ctx_builder.set_alpn_protos(b"\x0aacme-tls/1").unwrap();
         let ssl_ctx = ssl_ctx_builder.build();
 
-        let tcp_stream = match tokio::net::TcpStream::connect(connection_string).await {
+        let tcp_stream = match tokio::net::TcpStream::connect(connection_string.clone()).await {
             Ok(s) => s,
             Err(_) => return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                 valid: false,
@@ -437,7 +437,7 @@ impl crate::cert_order::validator_server::Validator for Validator {
                 return Err(tonic::Status::internal("failed to create SSL session"));
             }
         };
-        ssl_session.set_hostname(&sni_string);
+        ssl_session.set_hostname(&sni_string).unwrap();
         let mut ssl_stream = match tokio_openssl::SslStream::new(ssl_session, tcp_stream) {
             Ok(b) => b,
             Err(err) => {
@@ -452,7 +452,7 @@ impl crate::cert_order::validator_server::Validator for Validator {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
-                        error_type: crate::cert_order::ErrorType::ConnectionError.into(),
+                        error_type: crate::cert_order::ErrorType::TlsError.into(),
                         title: "Connection failed".to_string(),
                         detail: format!("Failed to negotiate TLS connection with {}", connection_string),
                         status: 400,
@@ -473,7 +473,7 @@ impl crate::cert_order::validator_server::Validator for Validator {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
-                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        error_type: crate::cert_order::ErrorType::TlsError.into(),
                         title: "No certificate".to_string(),
                         detail: "Server did not return a self signed certificate".to_string(),
                         status: 400,
@@ -490,7 +490,7 @@ impl crate::cert_order::validator_server::Validator for Validator {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
-                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        error_type: crate::cert_order::ErrorType::TlsError.into(),
                         title: "ALPN failed".to_string(),
                         detail: "Server did not negotiate \"acme-tls/1\" protocol".to_string(),
                         status: 400,
@@ -671,8 +671,8 @@ impl crate::cert_order::validator_server::Validator for Validator {
                 }
             };
             std::slice::from_raw_parts(
-                openssl_sys::ASN1_STRING_get0_data(acme_id_ext_data as *const openssl_sys::ASN1_STRING),
-                openssl_sys::ASN1_STRING_length(acme_id_ext_data as *const openssl_sys::ASN1_STRING) as usize,
+                openssl_sys::ASN1_STRING_get0_data(acme_id_data as *const openssl_sys::ASN1_STRING),
+                openssl_sys::ASN1_STRING_length(acme_id_data as *const openssl_sys::ASN1_STRING) as usize,
             )
         };
 

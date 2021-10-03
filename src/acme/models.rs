@@ -281,3 +281,11 @@ impl Certificate {
         rocket::uri!(crate::acme::certificate: cid = crate::util::uuid_as_b64(&self.id), idx = _, cidx = _).to_string()
     }
 }
+
+#[derive(Insertable, Queryable, Identifiable, Debug)]
+#[table_name = "tos_agreement_tokens"]
+pub struct ToSAgreementToken {
+    pub id: uuid::Uuid,
+    pub account: uuid::Uuid,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}

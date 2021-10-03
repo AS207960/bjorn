@@ -1,0 +1,1 @@
+DROP TABLE tos_agreement_tokens;

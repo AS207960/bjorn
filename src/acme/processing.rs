@@ -27,6 +27,11 @@ impl InnerBlockingOrderClient {
         self.rt.block_on(self.client.finalize_order(request))
     }
 
+    pub(crate) fn create_authorization(&mut self, request: impl tonic::IntoRequest<crate::cert_order::CreateAuthorizationRequest>)
+                    -> Result<tonic::Response<crate::cert_order::AuthorizationResponse>, tonic::Status> {
+        self.rt.block_on(self.client.create_authorization(request))
+    }
+
     pub(crate) fn get_authorization(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
                     -> Result<tonic::Response<crate::cert_order::Authorization>, tonic::Status> {
         self.rt.block_on(self.client.get_authorization(request))
@@ -50,6 +55,11 @@ impl InnerBlockingOrderClient {
     pub(crate) fn get_certificate(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
                     -> Result<tonic::Response<crate::cert_order::CertificateChainResponse>, tonic::Status> {
         self.rt.block_on(self.client.get_certificate(request))
+    }
+
+    pub(crate) fn revoke_certificate(&mut self, request: impl tonic::IntoRequest<crate::cert_order::RevokeCertRequest>)
+                    -> Result<tonic::Response<crate::cert_order::RevokeCertResponse>, tonic::Status> {
+        self.rt.block_on(self.client.revoke_certificate(request))
     }
 }
 
@@ -348,4 +358,54 @@ pub(crate) fn create_order(
     )?;
 
     Ok((db_order, ca_order))
+}
+
+pub(crate) fn create_authz(
+    client: &BlockingOrderClient, db: &crate::DBConn,
+    authz: &crate::types::authorization::AuthorizationCreate, account: &crate::acme::Account,
+) -> crate::acme::ACMEResult<(super::models::Authorization, crate::cert_order::Authorization)> {
+    let grpc_id_type = match crate::types::identifier::Type::from_str(&authz.identifier.id_type) {
+        Some(crate::types::identifier::Type::DNS) => crate::cert_order::IdentifierType::DnsIdentifier,
+        Some(crate::types::identifier::Type::IP) => crate::cert_order::IdentifierType::IpIdentifier,
+        Some(crate::types::identifier::Type::Email) => crate::cert_order::IdentifierType::EmailIdentifier,
+        None => {
+            return Err(crate::types::error::Error {
+                error_type: crate::types::error::Type::UnsupportedIdentifier,
+                status: 400,
+                title: "Unsupported identifier".to_string(),
+                detail: format!("'{}' is not an identifier we support", authz.identifier.id_type),
+                sub_problems: vec![],
+                instance: None,
+                identifier: Some(authz.identifier.to_owned()),
+            });
+        }
+    };
+    let identifier = crate::cert_order::Identifier {
+        id_type: grpc_id_type.into(),
+        identifier: authz.identifier.value.clone(),
+    };
+
+    let mut locked_client = client.lock();
+    let authz_result = crate::try_db_result!(locked_client.create_authorization(crate::cert_order::CreateAuthorizationRequest {
+        identifier: Some(identifier),
+        account_id: account.inner.id.to_string(),
+        eab_id: account.inner.eab_id.clone(),
+    }), "Failed to create authorization: {}")?;
+    std::mem::drop(locked_client);
+
+    let ca_authz = unwrap_authz_response(authz_result.into_inner())?;
+
+    let db_authz = super::models::Authorization {
+        id: uuid::Uuid::new_v4(),
+        account: account.inner.id,
+        ca_id: ca_authz.id.clone(),
+    };
+
+    crate::try_db_result!(
+        diesel::insert_into(super::schema::authorizations::dsl::authorizations)
+        .values(&db_authz).execute(&db.0),
+        "Unable to save authorization to database: {}"
+    )?;
+
+    Ok((db_authz, ca_authz))
 }

@@ -1,4 +1,5 @@
 use diesel::prelude::*;
+use chrono::prelude::*;
 use std::convert::TryInto;
 use crate::{types, DBConn};
 
@@ -128,6 +129,49 @@ macro_rules! ensure_request_key_jwk {
     }
 }
 
+macro_rules! ensure_tos_agreed {
+    ($src:expr, $conf:expr, $db:expr) => {
+        if let Some(tos_date) = $conf.tos_agreed_to_after {
+            if $src.inner.tos_agreed_at < tos_date {
+                let tos_agreemet_token = models::ToSAgreementToken {
+                    id: uuid::Uuid::new_v4(),
+                    account: $src.inner.id,
+                    expires_at: Utc::now() + chrono::Duration::days(1)
+                };
+
+                try_result!(try_db_result!(
+                    diesel::insert_into(schema::tos_agreement_tokens::dsl::tos_agreement_tokens)
+                        .values(&tos_agreemet_token).execute(&$db.0),
+                    "Unable to save ToS agreement token to database: {}"
+                ));
+
+                return responses::ACMEResponse::new(responses::InnerACMEResponse::Error(
+                    rocket_contrib::json::Json(types::error::Error {
+                        error_type: types::error::Type::UserActionRequired,
+                        status: 403,
+                        title: "User action required".to_string(),
+                        detail: "Terms of Service have been updated".to_string(),
+                        sub_problems: vec![],
+                        instance: Some(format!(
+                            "{}{}",
+                            $conf.external_uri,
+                            rocket::uri!(
+                                crate::acme::tos_agree:
+                                tid = crate::util::uuid_as_b64(&tos_agreemet_token.id)
+                            ).to_string()
+                        )),
+                        identifier: None,
+                    })
+                ), vec![links::LinkHeader {
+                    url: $conf.tos_uri.as_deref().unwrap_or_default().to_string(),
+                    relative: false,
+                    relation: "terms-of-service".to_string()
+                }]);
+            }
+        }
+    }
+}
+
 macro_rules! ensure_not_post_as_get {
     ($src:expr) => {
         match $src {
@@ -187,8 +231,9 @@ const DIRECTORY_URI: &'static str = "/directory";
 const NEW_NONCE_URI: &'static str = "/acme/nonce";
 const NEW_ACCOUNT_URI: &'static str = "/acme/new_account";
 const KEY_CHANGE_URI: &'static str = "/acme/key_change";
+const NEW_AUTHZ_URI: &'static str = "/acme/new_authz";
 const NEW_ORDER_URI: &'static str = "/acme/new_order";
-const HOME_PAGE: &'static str = include_str!("index.html");
+const REVOKE_CERT_URI: &'static str = "/acme/revoke";
 
 #[derive(Debug)]
 pub struct Account {
@@ -282,7 +327,20 @@ pub struct Config {
     external_account_required: bool,
     caa_identities: Vec<String>,
     tos_uri: Option<String>,
+    tos_agreed_to_after: Option<DateTime<Utc>>,
     website_uri: Option<String>,
+    issuers: Vec<ACMEIssuer>,
+}
+
+#[derive(Deserialize)]
+struct ACMEIssuerConfig {
+    issuer_cert_file: String,
+    cert_id: String,
+}
+
+pub struct ACMEIssuer {
+    pub(crate) issuer_cert: openssl::x509::X509,
+    pub(crate) cert_id: String,
 }
 
 impl rocket::fairing::Fairing for ConfigFairing {
@@ -343,6 +401,23 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
         };
+        let tos_agreed_to_after = match rocket.config().get_string("tos_agreed_to_after") {
+            Ok(v) => match v.parse::<DateTime<Utc>>() {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("Unable to parse ToS agreed to after date: {}", e);
+                    return Err(rocket);
+                }
+            }
+            Err(e) => {
+                if let rocket::config::ConfigError::Missing(_) = e {
+                    None
+                } else {
+                    error!("Unable to load ToS agreed to after date from config: {}", e);
+                    return Err(rocket);
+                }
+            }
+        };
         let website_uri = match rocket.config().get_string("website_uri") {
             Ok(v) => Some(v),
             Err(e) => {
@@ -355,13 +430,33 @@ impl rocket::fairing::Fairing for ConfigFairing {
             }
         };
 
+        let issuers_conf = rocket.config()
+            .get_slice("acme_issuers")
+            .expect("'acme_issuers' not configured");
+
+        let issuers = issuers_conf.iter()
+            .map(|i| {
+                let issuer = i.to_owned().try_into::<ACMEIssuerConfig>().expect("Invalid ACME issuer");
+                let issuer_cert = openssl::x509::X509::from_pem(
+                    &std::fs::read(issuer.issuer_cert_file).expect("Unable to read issuer certificate")
+                ).expect("Unable to parse issuer certificate");
+
+                ACMEIssuer {
+                    cert_id: issuer.cert_id,
+                    issuer_cert,
+                }
+            })
+            .collect::<Vec<_>>();
+
         Ok(
             rocket.manage(Config {
                 external_uri,
                 caa_identities,
                 external_account_required,
                 tos_uri,
+                tos_agreed_to_after,
                 website_uri,
+                issuers,
             })
         )
     }
@@ -442,8 +537,119 @@ impl<'a, 'r> rocket::request::FromRequest<'a, 'r> for ClientData {
 }
 
 #[get("/")]
-pub fn index() -> rocket::response::content::Html<&'static str> {
-    rocket::response::content::Html(HOME_PAGE)
+pub fn index() -> rocket_contrib::templates::Template {
+    rocket_contrib::templates::Template::render("index", std::collections::HashMap::<(), ()>::new())
+}
+
+#[derive(Serialize)]
+struct ToSAgreeTemplateData {
+    tos_uri: String,
+    tos_agreed_at: DateTime<Utc>,
+}
+
+fn get_tos_agreement_token(tid: &str, db: &DBConn) -> Result<(models::ToSAgreementToken, models::Account), types::error::Error> {
+    let tid_uuid = match decode_id!(&tid) {
+        Ok(v) => v,
+        Err(e) => return Err(e)
+    };
+    let tos_agreement_token: models::ToSAgreementToken = match match try_db_result!(schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
+        schema::tos_agreement_tokens::dsl::id.eq(&tid_uuid)
+    ).first::<models::ToSAgreementToken>(&db.0).optional(), "Unable to search for ToS agreement token: {}") {
+        Ok(v) => v,
+        Err(e) => return Err(e)
+    } {
+        Some(t) => t,
+        None => return Err(types::error::Error {
+            error_type: types::error::Type::Malformed,
+            status: 404,
+            title: "Not found".to_string(),
+            detail: format!("ToS token {} does not exist", tid),
+            sub_problems: vec![],
+            instance: None,
+            identifier: None,
+        })
+    };
+
+    if tos_agreement_token.expires_at < Utc::now() {
+        return Err(types::error::Error {
+            error_type: types::error::Type::Malformed,
+            status: 404,
+            title: "Not found".to_string(),
+            detail: format!("ToS token {} does not exist", tid),
+            sub_problems: vec![],
+            instance: None,
+            identifier: None,
+        });
+    }
+
+    let account: models::Account = match try_db_result!(schema::accounts::dsl::accounts.filter(
+        schema::accounts::dsl::id.eq(&tos_agreement_token.account)
+    ).first::<models::Account>(&db.0),  "Unable to search for account: {}") {
+        Ok(v) => v,
+        Err(e) => return Err(e)
+    };
+
+    Ok((tos_agreement_token, account))
+}
+
+#[get("/tos_agreement/<tid>")]
+pub fn tos_agree(tid: String, conf: rocket::State<Config>, db: DBConn) -> responses::InnerACMEResponse<'static, rocket_contrib::templates::Template> {
+    let (_, account) = match get_tos_agreement_token(&tid, &db) {
+        Ok(v) => v,
+        Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+    };
+
+    responses::InnerACMEResponse::Ok(
+        (rocket_contrib::templates::Template::render("tos_agree", ToSAgreeTemplateData {
+            tos_uri: conf.tos_uri.as_deref().unwrap_or_default().to_string(),
+            tos_agreed_at: account.tos_agreed_at,
+        }), rocket::http::Status::Ok)
+    )
+}
+
+#[derive(FromForm)]
+pub struct ToSAgree {
+    agree: bool,
+}
+
+#[post("/tos_agreement/<tid>", data = "<tos_agree>")]
+pub fn tos_agree_post(
+    tid: String, conf: rocket::State<Config>, db: DBConn,
+    tos_agree: rocket::request::Form<ToSAgree>,
+) -> responses::InnerACMEResponse<'static, rocket_contrib::templates::Template> {
+    let (tos_agreement_token, account) = match get_tos_agreement_token(&tid, &db) {
+        Ok(v) => v,
+        Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+    };
+
+    if !tos_agree.agree {
+        responses::InnerACMEResponse::Ok(
+            (rocket_contrib::templates::Template::render("tos_agree", ToSAgreeTemplateData {
+                tos_uri: conf.tos_uri.as_deref().unwrap_or_default().to_string(),
+                tos_agreed_at: account.tos_agreed_at,
+            }), rocket::http::Status::Ok)
+        )
+    } else {
+        match try_db_result!(diesel::update(schema::accounts::dsl::accounts.filter(schema::accounts::dsl::id.eq(&account.id)))
+            .set(schema::accounts::dsl::tos_agreed_at.eq(Utc::now()))
+            .execute(&db.0), "Unable to update account: {}") {
+            Ok(_) => {}
+            Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+        };
+        match try_db_result!(diesel::delete(schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
+            schema::tos_agreement_tokens::dsl::id.eq(&tos_agreement_token.id)
+        )).execute(&db.0), "Unable to delete ToS agreement token: {}") {
+            Ok(_) => {}
+            Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+        }
+
+        responses::InnerACMEResponse::Ok(
+            (
+                rocket_contrib::templates::Template::render("tos_agreed", std::collections::HashMap::<(), ()>::new()),
+                rocket::http::Status::Ok
+            )
+        )
+    }
 }
 
 #[get("/directory")]
@@ -457,8 +663,8 @@ pub fn directory(ua: ACMEResult<ClientData>, conf: rocket::State<Config>)
         new_nonce: format!("{}{}", conf.external_uri, NEW_NONCE_URI),
         new_account: Some(format!("{}{}", conf.external_uri, NEW_ACCOUNT_URI)),
         new_order: Some(format!("{}{}", conf.external_uri, NEW_ORDER_URI)),
-        new_authz: None,
-        revoke_cert: None,
+        new_authz: Some(format!("{}{}", conf.external_uri, NEW_AUTHZ_URI)),
+        revoke_cert: Some(format!("{}{}", conf.external_uri, REVOKE_CERT_URI)),
         key_change: Some(format!("{}{}", conf.external_uri, KEY_CHANGE_URI)),
         meta: Some(types::directory::Meta {
             terms_of_service: conf.tos_uri.clone(),
@@ -648,6 +854,7 @@ pub fn account_post(
     try_result!(ua);
     let acct = try_result!(acct);
     let acct_key = ensure_request_key_kid!(acct.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     try_result!(check_account(&aid, &acct_key));
 
     let payload = match acct.payload {
@@ -740,6 +947,7 @@ pub fn account_orders_post(
     try_result!(ua);
     let acct = try_result!(acct);
     let acct_key = ensure_request_key_kid!(acct.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     ensure_post_as_get!(acct.payload);
     try_result!(check_account(&aid, &acct_key));
 
@@ -779,6 +987,7 @@ pub fn key_change_post(
     try_result!(ua);
     let acct = try_result!(acct);
     let acct_key = ensure_request_key_kid!(acct.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     let payload = ensure_not_post_as_get!(acct.payload);
 
     let inner_acct: jws::JWSRequestInner<types::account::KeyChange> = try_result!(jws::JWSRequestInner::from_jws(uri.path(), payload, &conf, &db));
@@ -875,6 +1084,7 @@ pub fn new_order_post(
     try_result!(ua);
     let acct = try_result!(order);
     let acct_key = ensure_request_key_kid!(acct.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     let payload = ensure_not_post_as_get!(acct.payload);
 
     let (db_order, ca_order) = try_result!(processing::create_order(&client, &db, &payload, &acct_key));
@@ -884,6 +1094,36 @@ pub fn new_order_post(
         (responses::Headers {
             responder: rocket_contrib::json::Json(order_obj),
             headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, db_order.url()))],
+        }, rocket::http::Status::Created)
+    ), vec![]);
+}
+
+#[get("/acme/new_authz")]
+pub fn new_authz() -> rocket::http::Status {
+    rocket::http::Status::MethodNotAllowed
+}
+
+#[post("/acme/new_authz", data = "<order>")]
+pub fn new_authz_post(
+    ua: ACMEResult<ClientData>,
+    order: ACMEResult<jws::JWSRequest<types::authorization::AuthorizationCreate>>,
+    db: DBConn,
+    conf: rocket::State<Config>,
+    client: rocket::State<processing::BlockingOrderClient>,
+) -> responses::ACMEResponse<'static, responses::Headers<rocket_contrib::json::Json<types::authorization::Authorization>>> {
+    try_result!(ua);
+    let acct = try_result!(order);
+    let acct_key = ensure_request_key_kid!(acct.key);
+    ensure_tos_agreed!(acct_key, conf, db);
+    let payload = ensure_not_post_as_get!(acct.payload);
+
+    let (db_authz, ca_authz) = try_result!(processing::create_authz(&client, &db, &payload, &acct_key));
+
+    let authz_obj = try_result!(db_authz.to_json(ca_authz, &conf));
+    return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
+        (responses::Headers {
+            responder: rocket_contrib::json::Json(authz_obj),
+            headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, db_authz.url()))],
         }, rocket::http::Status::Created)
     ), vec![]);
 }
@@ -971,6 +1211,7 @@ pub fn order_post(
     try_result!(ua);
     let order = try_result!(order);
     let acct_key = ensure_request_key_kid!(order.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     ensure_post_as_get!(order.payload);
 
     let existing_order = try_result!(get_order(&oid, &db, &acct_key));
@@ -1003,6 +1244,7 @@ pub fn order_finalize_post(
     try_result!(ua);
     let order = try_result!(order);
     let acct_key = ensure_request_key_kid!(order.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     let order_finalize = ensure_not_post_as_get!(order.payload);
 
     let existing_order = try_result!(get_order(&oid, &db, &acct_key));
@@ -1054,6 +1296,7 @@ pub fn authorization_post(
     try_result!(ua);
     let authz = try_result!(authz);
     let acct_key = ensure_request_key_kid!(authz.key);
+    ensure_tos_agreed!(acct_key, conf, db);
 
     let existing_authz = try_result!(get_authz(&aid, &db, &acct_key));
 
@@ -1128,6 +1371,7 @@ pub fn challenge_post(
     try_result!(ua);
     let chall = try_result!(chall);
     let acct_key = ensure_request_key_kid!(chall.key);
+    ensure_tos_agreed!(acct_key, conf, db);
 
     let cid = match base64::decode_config(cid, base64::URL_SAFE_NO_PAD) {
         Ok(n) => n,
@@ -1181,6 +1425,123 @@ pub fn challenge_post(
         relative: true,
         relation: "up".to_string(),
     }]);
+}
+
+
+#[get("/acme/revoke")]
+pub fn revoke() -> rocket::http::Status {
+    rocket::http::Status::MethodNotAllowed
+}
+
+#[post("/acme/revoke", data = "<authz>")]
+pub fn revoke_post(
+    ua: ACMEResult<ClientData>,
+    db: DBConn,
+    authz: ACMEResult<jws::JWSRequest<types::revoke::RevokeCert>>,
+    conf: rocket::State<Config>,
+    client: rocket::State<processing::BlockingOrderClient>,
+) -> responses::ACMEResponse<'static, ()> {
+    try_result!(ua);
+    let authz = try_result!(authz);
+    let revoke_cert = ensure_not_post_as_get!(authz.payload);
+
+    let cert_bytes = match base64::decode_config(&revoke_cert.certificate, base64::URL_SAFE) {
+        Ok(c) => c,
+        Err(_) => {
+            return responses::ACMEResponse::new_error(types::error::Error {
+                error_type: types::error::Type::Malformed,
+                status: 400,
+                title: "Bad certificate".to_string(),
+                detail: "Invalid Base64 encoding for the certificate".to_string(),
+                sub_problems: vec![],
+                instance: None,
+                identifier: None,
+            });
+        }
+    };
+    let cert = match openssl::x509::X509::from_der(&cert_bytes) {
+        Ok(c) => c,
+        Err(_) => {
+            return responses::ACMEResponse::new_error(types::error::Error {
+                error_type: types::error::Type::Malformed,
+                status: 400,
+                title: "Bad certificate".to_string(),
+                detail: "Un-parsable certificate".to_string(),
+                sub_problems: vec![],
+                instance: None,
+                identifier: None,
+            });
+        }
+    };
+
+    let issued_by = match conf.issuers
+        .iter()
+        .filter(|i| i.issuer_cert.issued(&cert) == openssl::x509::X509VerifyResult::OK)
+        .next() {
+        Some(i) => i,
+        None => {
+            return responses::ACMEResponse::new_error(types::error::Error {
+                error_type: types::error::Type::Unauthorized,
+                status: 403,
+                title: "Unauthorized".to_string(),
+                detail: "This server did not issue the certificate requested to be revoked".to_string(),
+                sub_problems: vec![],
+                instance: None,
+                identifier: None,
+            });
+        }
+    };
+    let serial_number = cert.serial_number().to_bn().unwrap().to_vec();
+    let cert_public_key = cert.public_key().unwrap();
+
+    let revoke_req = match authz.key {
+        jws::JWSRequestKey::KID(acct) => {
+            ensure_tos_agreed!(acct, conf, db);
+            crate::cert_order::RevokeCertRequest {
+                account_id: acct.inner.id.to_string(),
+                authz_checked: false,
+                issuer_id: issued_by.cert_id.clone(),
+                serial_number,
+                revocation_reason: revoke_cert.reason,
+            }
+        }
+        jws::JWSRequestKey::JWK { key, .. } => {
+            if cert_public_key.public_eq(&key) {
+                crate::cert_order::RevokeCertRequest {
+                    account_id: String::new(),
+                    authz_checked: true,
+                    issuer_id: issued_by.cert_id.clone(),
+                    serial_number,
+                    revocation_reason: revoke_cert.reason,
+                }
+            } else {
+                return responses::ACMEResponse::new_error(types::error::Error {
+                    error_type: types::error::Type::Unauthorized,
+                    status: 403,
+                    title: "Unauthorized".to_string(),
+                    detail: "The public key used to sign the request does not match the certificate".to_string(),
+                    sub_problems: vec![],
+                    instance: None,
+                    identifier: None,
+                });
+            }
+        }
+    };
+
+    let mut locked_client = client.lock();
+    let revoke_result = try_result!(try_tonic_result(locked_client.revoke_certificate(revoke_req))).into_inner();
+    std::mem::drop(locked_client);
+
+    if let Some(error) = revoke_result.error {
+        return responses::ACMEResponse::new_error(crate::util::error_list_to_result(
+            error.errors.into_iter().map(processing::rpc_error_to_problem).collect(),
+            "Multiple errors make this request invalid".to_string(),
+        ).err().unwrap());
+    }
+
+    responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
+        ((), rocket::http::Status::Ok)
+    ), vec![])
 }
 
 enum CertFormat {
@@ -1414,6 +1775,7 @@ pub fn certificate(
 pub fn certificate_post(
     ua: ACMEResult<ClientData>,
     cert: ACMEResult<jws::JWSRequest<()>>,
+    conf: rocket::State<Config>,
     db: DBConn,
     cid: String,
     client: rocket::State<processing::BlockingOrderClient>,
@@ -1421,7 +1783,8 @@ pub fn certificate_post(
     cidx: Option<usize>,
 ) -> responses::ACMEResponse<'static, rocket::response::Response<'static>> {
     let cert = try_result!(cert);
-    ensure_request_key_kid!(cert.key);
+    let acct_key = ensure_request_key_kid!(cert.key);
+    ensure_tos_agreed!(acct_key, conf, db);
     ensure_post_as_get!(cert.payload);
 
     certificate(ua, db, cid, client, idx, cidx)

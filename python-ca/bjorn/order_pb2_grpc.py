@@ -59,6 +59,11 @@ class CAStub(object):
                 request_serializer=order__pb2.IDRequest.SerializeToString,
                 response_deserializer=order__pb2.CertificateChainResponse.FromString,
                 )
+        self.RevokeCertificate = channel.unary_unary(
+                '/cert_order.CA/RevokeCertificate',
+                request_serializer=order__pb2.RevokeCertRequest.SerializeToString,
+                response_deserializer=order__pb2.RevokeCertResponse.FromString,
+                )
 
 
 class CAServicer(object):
@@ -118,6 +123,12 @@ class CAServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RevokeCertificate(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_CAServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -165,6 +176,11 @@ def add_CAServicer_to_server(servicer, server):
                     servicer.GetCertificate,
                     request_deserializer=order__pb2.IDRequest.FromString,
                     response_serializer=order__pb2.CertificateChainResponse.SerializeToString,
+            ),
+            'RevokeCertificate': grpc.unary_unary_rpc_method_handler(
+                    servicer.RevokeCertificate,
+                    request_deserializer=order__pb2.RevokeCertRequest.FromString,
+                    response_serializer=order__pb2.RevokeCertResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -329,6 +345,23 @@ class CA(object):
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
+    @staticmethod
+    def RevokeCertificate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.CA/RevokeCertificate',
+            order__pb2.RevokeCertRequest.SerializeToString,
+            order__pb2.RevokeCertResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
 
 class OCSPStub(object):
     """Missing associated documentation comment in .proto file."""
@@ -405,6 +438,16 @@ class ValidatorStub(object):
                 request_serializer=order__pb2.KeyValidationRequest.SerializeToString,
                 response_deserializer=order__pb2.ValidationResult.FromString,
                 )
+        self.ValidateDNS01 = channel.unary_unary(
+                '/cert_order.Validator/ValidateDNS01',
+                request_serializer=order__pb2.KeyValidationRequest.SerializeToString,
+                response_deserializer=order__pb2.ValidationResult.FromString,
+                )
+        self.ValidateTLSALPN01 = channel.unary_unary(
+                '/cert_order.Validator/ValidateTLSALPN01',
+                request_serializer=order__pb2.KeyValidationRequest.SerializeToString,
+                response_deserializer=order__pb2.ValidationResult.FromString,
+                )
 
 
 class ValidatorServicer(object):
@@ -416,11 +459,33 @@ class ValidatorServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ValidateDNS01(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ValidateTLSALPN01(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ValidatorServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ValidateHTTP01': grpc.unary_unary_rpc_method_handler(
                     servicer.ValidateHTTP01,
+                    request_deserializer=order__pb2.KeyValidationRequest.FromString,
+                    response_serializer=order__pb2.ValidationResult.SerializeToString,
+            ),
+            'ValidateDNS01': grpc.unary_unary_rpc_method_handler(
+                    servicer.ValidateDNS01,
+                    request_deserializer=order__pb2.KeyValidationRequest.FromString,
+                    response_serializer=order__pb2.ValidationResult.SerializeToString,
+            ),
+            'ValidateTLSALPN01': grpc.unary_unary_rpc_method_handler(
+                    servicer.ValidateTLSALPN01,
                     request_deserializer=order__pb2.KeyValidationRequest.FromString,
                     response_serializer=order__pb2.ValidationResult.SerializeToString,
             ),
@@ -446,6 +511,40 @@ class Validator(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/ValidateHTTP01',
+            order__pb2.KeyValidationRequest.SerializeToString,
+            order__pb2.ValidationResult.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def ValidateDNS01(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/ValidateDNS01',
+            order__pb2.KeyValidationRequest.SerializeToString,
+            order__pb2.ValidationResult.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def ValidateTLSALPN01(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/ValidateTLSALPN01',
             order__pb2.KeyValidationRequest.SerializeToString,
             order__pb2.ValidationResult.FromString,
             options, channel_credentials,

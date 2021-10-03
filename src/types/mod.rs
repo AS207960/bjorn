@@ -5,4 +5,5 @@ pub mod directory;
 pub mod order;
 pub mod authorization;
 pub mod challenge;
+pub mod revoke;
 pub mod jose;

@@ -431,3 +431,73 @@ class CAServicer(order_pb2_grpc.CAServicer):
             ),
             alternative_chains=[]
         )
+
+    def RevokeCertificate(self, request: order_pb2.RevokeCertRequest, context):
+        if request.issuer_id != "a":
+            context.set_details("Requested issuer not found")
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return order_pb2.Challenge()
+
+        cid = uuid.UUID(bytes=request.serial_number)
+        cert = models.Certificate.objects.filter(id=cid).first()  # type: models.Certificate
+
+        if not cert:
+            context.set_details("Requested certificate not found")
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return order_pb2.CertificateChainResponse()
+
+        if cert.revoked:
+            return order_pb2.RevokeCertResponse(
+                error=order_pb2.ErrorResponse(
+                    errors=[order_pb2.Error(
+                        error_type=order_pb2.AlreadyRevokedError,
+                        status=400,
+                        title="Already revoked",
+                        detail=f"Certificate ID {cert} has already been revoked"
+                    )]
+                )
+            )
+
+        if not request.authz_checked:
+            return order_pb2.RevokeCertResponse(
+                error=order_pb2.ErrorResponse(
+                    errors=[order_pb2.Error(
+                        error_type=order_pb2.UnauthorizedError,
+                        status=403,
+                        title="Unauthorized",
+                        detail=f"Your account is not authorized to revoke certificate ID {cert}"
+                    )]
+                )
+            )
+
+        if request.revocation_reason:
+            if request.revocation_reason.value == 0:
+                revocation_reason = cert.RevocationUnspecified
+            elif request.revocation_reason.value == 1:
+                revocation_reason = cert.RevocationKeyCompromise
+            elif request.revocation_reason.value == 3:
+                revocation_reason = cert.RevocationAffiliationChanged
+            elif request.revocation_reason.value == 4:
+                revocation_reason = cert.RevocationSuperseded
+            elif request.revocation_reason.value == 5:
+                revocation_reason = cert.RevocationCessationOfOperation
+            else:
+                return order_pb2.RevokeCertResponse(
+                    error=order_pb2.ErrorResponse(
+                        errors=[order_pb2.Error(
+                            error_type=order_pb2.BadRevocationReasonError,
+                            status=403,
+                            title="Unsupported revocation reason",
+                            detail=f"Revocation reason code {request.revocation_reason.value} is not supported"
+                        )]
+                    )
+                )
+        else:
+            revocation_reason = 0
+
+        cert.revoked = True
+        cert.revocation_reason = revocation_reason
+        cert.revocation_timestamp = timezone.now()
+        cert.save()
+
+        return order_pb2.RevokeCertResponse()

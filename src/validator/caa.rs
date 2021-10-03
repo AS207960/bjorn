@@ -64,7 +64,8 @@ pub async fn find_caa_record(validator: &super::Validator, identifier: &super::I
                     _ => Err(CAAError::ServFail)
                 }
             };
-        }
+        },
+        _ => unimplemented!()
     }
 
     return Ok(vec![]);

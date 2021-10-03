@@ -51,9 +51,18 @@ table! {
     }
 }
 
+table! {
+    tos_agreement_tokens (id) {
+        id -> Uuid,
+        account -> Uuid,
+        expires_at -> Timestamptz,
+    }
+}
+
 joinable!(account_contacts -> accounts (account));
 joinable!(orders -> accounts (account));
 joinable!(authorizations -> accounts (account));
+joinable!(tos_agreement_tokens -> accounts (account));
 
 allow_tables_to_appear_in_same_query!(
     account_contacts,
@@ -62,4 +71,5 @@ allow_tables_to_appear_in_same_query!(
     orders,
     authorizations,
     certificates,
+    tos_agreement_tokens,
 );

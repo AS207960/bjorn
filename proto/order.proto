@@ -65,6 +65,7 @@ message ErrorResponse {
 service CA {
   rpc ValidateEAB (ValidateEABRequest) returns (ValidateEABResponse) {}
   rpc CreateOrder (CreateOrderRequest) returns (OrderResponse) {}
+  rpc CreateAuthorization (CreateAuthorizationRequest) returns (AuthorizationResponse) {}
   rpc GetOrder (IDRequest) returns (Order) {}
   rpc FinalizeOrder (FinalizeOrderRequest) returns (OrderResponse) {}
   rpc GetAuthorization (IDRequest) returns (Authorization) {}
@@ -72,6 +73,7 @@ service CA {
   rpc GetChallenge (ChallengeIDRequest) returns (Challenge) {}
   rpc CompleteChallenge (CompleteChallengeRequest) returns (ChallengeResponse) {}
   rpc GetCertificate (IDRequest) returns (CertificateChainResponse) {}
+  rpc RevokeCertificate (RevokeCertRequest) returns (RevokeCertResponse) {}
 }
 
 service OCSP {
@@ -120,6 +122,12 @@ message CreateOrderRequest {
   google.protobuf.Timestamp not_after = 3;
   string account_id = 4;
   google.protobuf.StringValue eab_id = 5;
+}
+
+message CreateAuthorizationRequest {
+  Identifier identifier = 1;
+  string account_id = 2;
+  google.protobuf.StringValue eab_id = 3;
 }
 
 message OrderResponse {
@@ -199,6 +207,18 @@ message Authorization {
   Identifier identifier = 4;
   repeated Challenge challenges = 5;
   google.protobuf.BoolValue wildcard = 6;
+}
+
+message RevokeCertRequest {
+  string account_id = 1;
+  bool authz_checked = 2;
+  string issuer_id = 3;
+  bytes serial_number = 4;
+  google.protobuf.UInt32Value revocation_reason = 5;
+}
+
+message RevokeCertResponse {
+  ErrorResponse error = 1;
 }
 
 enum ChallengeType {

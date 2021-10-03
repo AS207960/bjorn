@@ -12,6 +12,7 @@ fn main() {
         .attach(bjorn::acme::ConfigFairing())
         .attach(bjorn::DBConn::fairing())
         .attach(bjorn::acme::DBMigrationFairing())
+        .attach(rocket_contrib::templates::Template::fairing())
         .attach(rocket::fairing::AdHoc::on_attach("gRPC Config", |rocket| {
             let dst = rocket.config()
                 .get_string("ca_grpc_uri")
@@ -32,6 +33,8 @@ fn main() {
         ])
         .mount("/", routes![
             bjorn::acme::index,
+            bjorn::acme::tos_agree,
+            bjorn::acme::tos_agree_post,
             bjorn::acme::directory,
             bjorn::acme::directory_post,
             bjorn::acme::get_nonce,
@@ -46,6 +49,8 @@ fn main() {
             bjorn::acme::account_orders_post,
             bjorn::acme::new_order,
             bjorn::acme::new_order_post,
+            bjorn::acme::new_authz,
+            bjorn::acme::new_authz_post,
             bjorn::acme::order,
             bjorn::acme::order_post,
             bjorn::acme::order_finalize,
@@ -56,6 +61,8 @@ fn main() {
             bjorn::acme::challenge_post,
             bjorn::acme::certificate,
             bjorn::acme::certificate_post,
+            bjorn::acme::revoke,
+            bjorn::acme::revoke_post,
         ])
         .launch();
 }
