@@ -59,6 +59,7 @@ A basic diagram of their inter-working is as follows;
 | `src/ocsp`             | Benny specific utilities                        |
 | `src/bin/validator.rs` | The Frida binary                                |
 | `src/validator`        | Frida specific utilities                        |
+| `templates`            | Björn HTML templates                            |
 
 ## Implemented RFCs
 
