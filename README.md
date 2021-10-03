@@ -72,7 +72,7 @@ A basic diagram of their inter-working is as follows;
 * [RFC 8954](https://datatracker.ietf.org/doc/html/rfc8954) - Online Certificate Status Protocol (OCSP) Nonce Extension
 * [draft-shoemaker-caa-ip-01](https://datatracker.ietf.org/doc/html/draft-shoemaker-caa-ip-01) - Certification Authority Authorization (CAA) Validation for IP Addresses
 
-Note: CAA iodef and RFC 8657 are not yet supported
+Note: CAA iodef is not yet supported
 
 ## Setup
 
