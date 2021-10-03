@@ -113,7 +113,7 @@ including protocol and port.
 The URL of the Terms and Conditions page of the ACME server. End users should
 be presented with this page by their ACME client to agree to it before proceeding.
 
-#### `tos_agreed_to_after`
+##### `tos_agreed_to_after`
 An ISO8601 timestamp for which accounts that agreed to tho terms of service 
 before which will be required to agree again before continuing with their request.
 Useful if the ToS have been updated and users need to be aware of a new/updated clause.
