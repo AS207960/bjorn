@@ -20,6 +20,8 @@ pub enum Type {
     HTTP01,
     #[serde(rename = "dns-01")]
     DNS01,
+    #[serde(rename = "tls-alpn-01")]
+    TLSALPN01,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

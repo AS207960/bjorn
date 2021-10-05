@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x0border.proto\x12\ncert_order\x1a\x1egoogle/protobuf/wrappers.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"M\n\nIdentifier\x12+\n\x07id_type\x18\x01 \x01(\x0e\x32\x1a.cert_order.IdentifierType\x12\x12\n\nidentifier\x18\x02 \x01(\t\"\xe6\x01\n\x05\x45rror\x12)\n\nerror_type\x18\x01 \x01(\x0e\x32\x15.cert_order.ErrorType\x12\r\n\x05title\x18\x02 \x01(\t\x12\x0e\n\x06status\x18\x03 \x01(\r\x12\x0e\n\x06\x64\x65tail\x18\x04 \x01(\t\x12.\n\x08instance\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.StringValue\x12\'\n\x0csub_problems\x18\x06 \x03(\x0b\x32\x11.cert_order.Error\x12*\n\nidentifier\x18\x07 \x01(\x0b\x32\x16.cert_order.Identifier\"2\n\rErrorResponse\x12!\n\x06\x65rrors\x18\x01 \x03(\x0b\x32\x11.cert_order.Error\"\xa0\x01\n\x14KeyValidationRequest\x12\r\n\x05token\x18\x01 \x01(\t\x12\x1a\n\x12\x61\x63\x63ount_thumbprint\x18\x02 \x01(\t\x12*\n\nidentifier\x18\x03 \x01(\x0b\x32\x16.cert_order.Identifier\x12\x31\n\x0b\x61\x63\x63ount_uri\x18\x04 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"K\n\x10ValidationResult\x12\r\n\x05valid\x18\x01 \x01(\x08\x12(\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponse\"\x83\x01\n\x12ValidateEABRequest\x12\x0b\n\x03kid\x18\x01 \x01(\t\x12\x38\n\x10signature_method\x18\x02 \x01(\x0e\x32\x1e.cert_order.EABSignatureMethod\x12\x13\n\x0bsigned_data\x18\x03 \x01(\x0c\x12\x11\n\tsignature\x18\x04 \x01(\x0c\"$\n\x13ValidateEABResponse\x12\r\n\x05valid\x18\x01 \x01(\x08\"\xe2\x01\n\x12\x43reateOrderRequest\x12+\n\x0bidentifiers\x18\x01 \x03(\x0b\x32\x16.cert_order.Identifier\x12.\n\nnot_before\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12-\n\tnot_after\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x12\n\naccount_id\x18\x04 \x01(\t\x12,\n\x06\x65\x61\x62_id\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"i\n\rOrderResponse\x12\"\n\x05order\x18\x01 \x01(\x0b\x32\x11.cert_order.OrderH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"\x81\x01\n\x15\x41uthorizationResponse\x12\x32\n\rauthorization\x18\x01 \x01(\x0b\x32\x19.cert_order.AuthorizationH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"u\n\x11\x43hallengeResponse\x12*\n\tchallenge\x18\x01 \x01(\x0b\x32\x15.cert_order.ChallengeH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"\x17\n\tIDRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\"1\n\x12\x43hallengeIDRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0f\n\x07\x61uth_id\x18\x02 \x01(\x0c\"h\n\x18\x43ompleteChallengeRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0f\n\x07\x61uth_id\x18\x02 \x01(\x0c\x12\x1a\n\x12\x61\x63\x63ount_thumbprint\x18\x03 \x01(\t\x12\x13\n\x0b\x61\x63\x63ount_uri\x18\x04 \x01(\t\"/\n\x14\x46inalizeOrderRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0b\n\x03\x63sr\x18\x02 \x01(\x0c\"\xc2\x02\n\x05Order\x12\n\n\x02id\x18\x01 \x01(\x0c\x12+\n\x0bidentifiers\x18\x02 \x03(\x0b\x32\x16.cert_order.Identifier\x12.\n\nnot_before\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12-\n\tnot_after\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65xpires\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\'\n\x06status\x18\x06 \x01(\x0e\x32\x17.cert_order.OrderStatus\x12\x16\n\x0e\x61uthorizations\x18\x07 \x03(\x0c\x12\x33\n\x0e\x63\x65rtificate_id\x18\x08 \x01(\x0b\x32\x1b.google.protobuf.BytesValue\"\xfe\x01\n\rAuthorization\x12\n\n\x02id\x18\x01 \x01(\x0c\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.cert_order.AuthorizationStatus\x12+\n\x07\x65xpires\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12*\n\nidentifier\x18\x04 \x01(\x0b\x32\x16.cert_order.Identifier\x12)\n\nchallenges\x18\x05 \x03(\x0b\x32\x15.cert_order.Challenge\x12,\n\x08wildcard\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.BoolValue\"\xa1\x01\n\x11RevokeCertRequest\x12\x12\n\naccount_id\x18\x01 \x01(\t\x12\x15\n\rauthz_checked\x18\x02 \x01(\x08\x12\x11\n\tissuer_id\x18\x03 \x01(\t\x12\x15\n\rserial_number\x18\x04 \x01(\x0c\x12\x37\n\x11revocation_reason\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.UInt32Value\">\n\x12RevokeCertResponse\x12(\n\x05\x65rror\x18\x01 \x01(\x0b\x32\x19.cert_order.ErrorResponse\"\xf3\x01\n\tChallenge\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\'\n\x04type\x18\x02 \x01(\x0e\x32\x19.cert_order.ChallengeType\x12+\n\x06status\x18\x03 \x01(\x0e\x32\x1b.cert_order.ChallengeStatus\x12-\n\tvalidated\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12(\n\x05\x65rror\x18\x05 \x01(\x0b\x32\x19.cert_order.ErrorResponse\x12+\n\x05token\x18\x06 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"(\n\x10\x43\x65rtificateChain\x12\x14\n\x0c\x63\x65rtificates\x18\x01 \x03(\x0c\"\x89\x01\n\x18\x43\x65rtificateChainResponse\x12\x33\n\rprimary_chain\x18\x01 \x01(\x0b\x32\x1c.cert_order.CertificateChain\x12\x38\n\x12\x61lternative_chains\x18\x02 \x03(\x0b\x32\x1c.cert_order.CertificateChain\"<\n\x10\x43heckCertRequest\x12\x11\n\tissuer_id\x18\x01 \x01(\t\x12\x15\n\rserial_number\x18\x02 \x01(\x0c\"\xf9\x02\n\x11\x43heckCertResponse\x12&\n\x06status\x18\x01 \x01(\x0e\x32\x16.cert_order.CertStatus\x12\x37\n\x11revocation_reason\x18\x02 \x01(\x0e\x32\x1c.cert_order.RevocationReason\x12\x38\n\x14revocation_timestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0bthis_update\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0bnext_update\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x0e\x61rchive_cutoff\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x33\n\x0finvalidity_date\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*a\n\x0eIdentifierType\x12\x15\n\x11UnknownIdentifier\x10\x00\x12\x11\n\rDNSIdentifier\x10\x01\x12\x10\n\x0cIPIdentifier\x10\x02\x12\x13\n\x0f\x45mailIdentifier\x10\x03*\xdd\x05\n\tErrorType\x12\x17\n\x13ServerInternalError\x10\x00\x12\x1c\n\x18\x41\x63\x63ountDoesNotExistError\x10\x01\x12\x17\n\x13\x41lreadyRevokedError\x10\x02\x12\x0f\n\x0b\x42\x61\x64\x43SRError\x10\x03\x12\x11\n\rBadNonceError\x10\x04\x12\x15\n\x11\x42\x61\x64PublicKeyError\x10\x05\x12\x1c\n\x18\x42\x61\x64RevocationReasonError\x10\x06\x12\x1e\n\x1a\x42\x61\x64SignatureAlgorithmError\x10\x07\x12\x0c\n\x08\x43\x41\x41\x45rror\x10\x08\x12\x11\n\rCompoundError\x10\t\x12\x13\n\x0f\x43onnectionError\x10\n\x12\x0c\n\x08\x44NSError\x10\x0b\x12 \n\x1c\x45xternalAccountRequiredError\x10\x0c\x12\x1a\n\x16IncorrectResponseError\x10\r\x12\x17\n\x13InvalidContactError\x10\x0e\x12\x12\n\x0eMalformedError\x10\x0f\x12\x16\n\x12OrderNotReadyError\x10\x10\x12\x14\n\x10RateLimitedError\x10\x11\x12\x1b\n\x17RejectedIdentifierError\x10\x12\x12\x0c\n\x08TLSError\x10\x13\x12\x15\n\x11UnauthorizedError\x10\x14\x12\x1b\n\x17UnsupportedContactError\x10\x15\x12\x1e\n\x1aUnsupportedIdentifierError\x10\x16\x12\x1b\n\x17UserActionRequiredError\x10\x17\x12\x1c\n\x18\x41utoRenewalCanceledError\x10\x18\x12\x1b\n\x17\x41utoRenewalExpiredError\x10\x19\x12\'\n#AutoRenewalCancellationInvalidError\x10\x1a\x12*\n&AutoRenewalRevocationNotSupportedError\x10\x1b*>\n\x12\x45\x41\x42SignatureMethod\x12\t\n\x05HS256\x10\x00\x12\t\n\x05HS384\x10\x01\x12\t\n\x05HS512\x10\x02\x12\x07\n\x03HS1\x10\x03*f\n\x0bOrderStatus\x12\x10\n\x0cOrderPending\x10\x00\x12\x0e\n\nOrderReady\x10\x01\x12\x13\n\x0fOrderProcessing\x10\x02\x12\x0e\n\nOrderValid\x10\x03\x12\x10\n\x0cOrderInvalid\x10\x04*\xb3\x01\n\x13\x41uthorizationStatus\x12\x18\n\x14\x41uthorizationPending\x10\x00\x12\x16\n\x12\x41uthorizationValid\x10\x01\x12\x18\n\x14\x41uthorizationInvalid\x10\x02\x12\x1c\n\x18\x41uthorizationDeactivated\x10\x03\x12\x18\n\x14\x41uthorizationExpired\x10\x04\x12\x18\n\x14\x41uthorizationRevoked\x10\x05*8\n\rChallengeType\x12\x13\n\x0f\x43hallengeHTTP01\x10\x00\x12\x12\n\x0e\x43hallengeDNS01\x10\x01*j\n\x0f\x43hallengeStatus\x12\x14\n\x10\x43hallengePending\x10\x00\x12\x17\n\x13\x43hallengeProcessing\x10\x01\x12\x12\n\x0e\x43hallengeValid\x10\x02\x12\x14\n\x10\x43hallengeInvalid\x10\x03*N\n\nCertStatus\x12\x0f\n\x0b\x43\x65rtUnknown\x10\x00\x12\x0c\n\x08\x43\x65rtGood\x10\x01\x12\x0f\n\x0b\x43\x65rtRevoked\x10\x02\x12\x10\n\x0c\x43\x65rtUnissued\x10\x03*\xd7\x02\n\x10RevocationReason\x12\x15\n\x11RevocationUnknown\x10\x00\x12\x19\n\x15RevocationUnspecified\x10\x01\x12\x1b\n\x17RevocationKeyCompromise\x10\x02\x12\x1a\n\x16RevocationCACompromise\x10\x03\x12 \n\x1cRevocationAffiliationChanged\x10\x04\x12\x18\n\x14RevocationSuperseded\x10\x05\x12\"\n\x1eRevocationCessationOfOperation\x10\x06\x12\x1d\n\x19RevocationCertificateHold\x10\x07\x12\x1b\n\x17RevocationRemoveFromCRL\x10\x08\x12 \n\x1cRevocationPrivilegeWithdrawn\x10\t\x12\x1a\n\x16RevocationAACompromise\x10\n2\x95\x06\n\x02\x43\x41\x12P\n\x0bValidateEAB\x12\x1e.cert_order.ValidateEABRequest\x1a\x1f.cert_order.ValidateEABResponse\"\x00\x12J\n\x0b\x43reateOrder\x12\x1e.cert_order.CreateOrderRequest\x1a\x19.cert_order.OrderResponse\"\x00\x12\x36\n\x08GetOrder\x12\x15.cert_order.IDRequest\x1a\x11.cert_order.Order\"\x00\x12N\n\rFinalizeOrder\x12 .cert_order.FinalizeOrderRequest\x1a\x19.cert_order.OrderResponse\"\x00\x12\x46\n\x10GetAuthorization\x12\x15.cert_order.IDRequest\x1a\x19.cert_order.Authorization\"\x00\x12U\n\x17\x44\x65\x61\x63tivateAuthorization\x12\x15.cert_order.IDRequest\x1a!.cert_order.AuthorizationResponse\"\x00\x12G\n\x0cGetChallenge\x12\x1e.cert_order.ChallengeIDRequest\x1a\x15.cert_order.Challenge\"\x00\x12Z\n\x11\x43ompleteChallenge\x12$.cert_order.CompleteChallengeRequest\x1a\x1d.cert_order.ChallengeResponse\"\x00\x12O\n\x0eGetCertificate\x12\x15.cert_order.IDRequest\x1a$.cert_order.CertificateChainResponse\"\x00\x12T\n\x11RevokeCertificate\x12\x1d.cert_order.RevokeCertRequest\x1a\x1e.cert_order.RevokeCertResponse\"\x00\x32R\n\x04OCSP\x12J\n\tCheckCert\x12\x1c.cert_order.CheckCertRequest\x1a\x1d.cert_order.CheckCertResponse\"\x00\x32\x89\x02\n\tValidator\x12R\n\x0eValidateHTTP01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x12Q\n\rValidateDNS01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x12U\n\x11ValidateTLSALPN01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x62\x06proto3'
+  serialized_pb=b'\n\x0border.proto\x12\ncert_order\x1a\x1egoogle/protobuf/wrappers.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"M\n\nIdentifier\x12+\n\x07id_type\x18\x01 \x01(\x0e\x32\x1a.cert_order.IdentifierType\x12\x12\n\nidentifier\x18\x02 \x01(\t\"\xe6\x01\n\x05\x45rror\x12)\n\nerror_type\x18\x01 \x01(\x0e\x32\x15.cert_order.ErrorType\x12\r\n\x05title\x18\x02 \x01(\t\x12\x0e\n\x06status\x18\x03 \x01(\r\x12\x0e\n\x06\x64\x65tail\x18\x04 \x01(\t\x12.\n\x08instance\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.StringValue\x12\'\n\x0csub_problems\x18\x06 \x03(\x0b\x32\x11.cert_order.Error\x12*\n\nidentifier\x18\x07 \x01(\x0b\x32\x16.cert_order.Identifier\"2\n\rErrorResponse\x12!\n\x06\x65rrors\x18\x01 \x03(\x0b\x32\x11.cert_order.Error\"\xa0\x01\n\x14KeyValidationRequest\x12\r\n\x05token\x18\x01 \x01(\t\x12\x1a\n\x12\x61\x63\x63ount_thumbprint\x18\x02 \x01(\t\x12*\n\nidentifier\x18\x03 \x01(\x0b\x32\x16.cert_order.Identifier\x12\x31\n\x0b\x61\x63\x63ount_uri\x18\x04 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"K\n\x10ValidationResult\x12\r\n\x05valid\x18\x01 \x01(\x08\x12(\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponse\"\x83\x01\n\x12ValidateEABRequest\x12\x0b\n\x03kid\x18\x01 \x01(\t\x12\x38\n\x10signature_method\x18\x02 \x01(\x0e\x32\x1e.cert_order.EABSignatureMethod\x12\x13\n\x0bsigned_data\x18\x03 \x01(\x0c\x12\x11\n\tsignature\x18\x04 \x01(\x0c\"$\n\x13ValidateEABResponse\x12\r\n\x05valid\x18\x01 \x01(\x08\"\xe2\x01\n\x12\x43reateOrderRequest\x12+\n\x0bidentifiers\x18\x01 \x03(\x0b\x32\x16.cert_order.Identifier\x12.\n\nnot_before\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12-\n\tnot_after\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x12\n\naccount_id\x18\x04 \x01(\t\x12,\n\x06\x65\x61\x62_id\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"\x8a\x01\n\x1a\x43reateAuthorizationRequest\x12*\n\nidentifier\x18\x01 \x01(\x0b\x32\x16.cert_order.Identifier\x12\x12\n\naccount_id\x18\x02 \x01(\t\x12,\n\x06\x65\x61\x62_id\x18\x03 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"i\n\rOrderResponse\x12\"\n\x05order\x18\x01 \x01(\x0b\x32\x11.cert_order.OrderH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"\x81\x01\n\x15\x41uthorizationResponse\x12\x32\n\rauthorization\x18\x01 \x01(\x0b\x32\x19.cert_order.AuthorizationH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"u\n\x11\x43hallengeResponse\x12*\n\tchallenge\x18\x01 \x01(\x0b\x32\x15.cert_order.ChallengeH\x00\x12*\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x19.cert_order.ErrorResponseH\x00\x42\x08\n\x06result\"\x17\n\tIDRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\"1\n\x12\x43hallengeIDRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0f\n\x07\x61uth_id\x18\x02 \x01(\x0c\"h\n\x18\x43ompleteChallengeRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0f\n\x07\x61uth_id\x18\x02 \x01(\x0c\x12\x1a\n\x12\x61\x63\x63ount_thumbprint\x18\x03 \x01(\t\x12\x13\n\x0b\x61\x63\x63ount_uri\x18\x04 \x01(\t\"/\n\x14\x46inalizeOrderRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x0b\n\x03\x63sr\x18\x02 \x01(\x0c\"\xc2\x02\n\x05Order\x12\n\n\x02id\x18\x01 \x01(\x0c\x12+\n\x0bidentifiers\x18\x02 \x03(\x0b\x32\x16.cert_order.Identifier\x12.\n\nnot_before\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12-\n\tnot_after\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65xpires\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\'\n\x06status\x18\x06 \x01(\x0e\x32\x17.cert_order.OrderStatus\x12\x16\n\x0e\x61uthorizations\x18\x07 \x03(\x0c\x12\x33\n\x0e\x63\x65rtificate_id\x18\x08 \x01(\x0b\x32\x1b.google.protobuf.BytesValue\"\xfe\x01\n\rAuthorization\x12\n\n\x02id\x18\x01 \x01(\x0c\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.cert_order.AuthorizationStatus\x12+\n\x07\x65xpires\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12*\n\nidentifier\x18\x04 \x01(\x0b\x32\x16.cert_order.Identifier\x12)\n\nchallenges\x18\x05 \x03(\x0b\x32\x15.cert_order.Challenge\x12,\n\x08wildcard\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.BoolValue\"\xa1\x01\n\x11RevokeCertRequest\x12\x12\n\naccount_id\x18\x01 \x01(\t\x12\x15\n\rauthz_checked\x18\x02 \x01(\x08\x12\x11\n\tissuer_id\x18\x03 \x01(\t\x12\x15\n\rserial_number\x18\x04 \x01(\x0c\x12\x37\n\x11revocation_reason\x18\x05 \x01(\x0b\x32\x1c.google.protobuf.UInt32Value\">\n\x12RevokeCertResponse\x12(\n\x05\x65rror\x18\x01 \x01(\x0b\x32\x19.cert_order.ErrorResponse\"\xf3\x01\n\tChallenge\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\'\n\x04type\x18\x02 \x01(\x0e\x32\x19.cert_order.ChallengeType\x12+\n\x06status\x18\x03 \x01(\x0e\x32\x1b.cert_order.ChallengeStatus\x12-\n\tvalidated\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12(\n\x05\x65rror\x18\x05 \x01(\x0b\x32\x19.cert_order.ErrorResponse\x12+\n\x05token\x18\x06 \x01(\x0b\x32\x1c.google.protobuf.StringValue\"(\n\x10\x43\x65rtificateChain\x12\x14\n\x0c\x63\x65rtificates\x18\x01 \x03(\x0c\"\x89\x01\n\x18\x43\x65rtificateChainResponse\x12\x33\n\rprimary_chain\x18\x01 \x01(\x0b\x32\x1c.cert_order.CertificateChain\x12\x38\n\x12\x61lternative_chains\x18\x02 \x03(\x0b\x32\x1c.cert_order.CertificateChain\"<\n\x10\x43heckCertRequest\x12\x11\n\tissuer_id\x18\x01 \x01(\t\x12\x15\n\rserial_number\x18\x02 \x01(\x0c\"\xf9\x02\n\x11\x43heckCertResponse\x12&\n\x06status\x18\x01 \x01(\x0e\x32\x16.cert_order.CertStatus\x12\x37\n\x11revocation_reason\x18\x02 \x01(\x0e\x32\x1c.cert_order.RevocationReason\x12\x38\n\x14revocation_timestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0bthis_update\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0bnext_update\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x0e\x61rchive_cutoff\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x33\n\x0finvalidity_date\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*a\n\x0eIdentifierType\x12\x15\n\x11UnknownIdentifier\x10\x00\x12\x11\n\rDNSIdentifier\x10\x01\x12\x10\n\x0cIPIdentifier\x10\x02\x12\x13\n\x0f\x45mailIdentifier\x10\x03*\xdd\x05\n\tErrorType\x12\x17\n\x13ServerInternalError\x10\x00\x12\x1c\n\x18\x41\x63\x63ountDoesNotExistError\x10\x01\x12\x17\n\x13\x41lreadyRevokedError\x10\x02\x12\x0f\n\x0b\x42\x61\x64\x43SRError\x10\x03\x12\x11\n\rBadNonceError\x10\x04\x12\x15\n\x11\x42\x61\x64PublicKeyError\x10\x05\x12\x1c\n\x18\x42\x61\x64RevocationReasonError\x10\x06\x12\x1e\n\x1a\x42\x61\x64SignatureAlgorithmError\x10\x07\x12\x0c\n\x08\x43\x41\x41\x45rror\x10\x08\x12\x11\n\rCompoundError\x10\t\x12\x13\n\x0f\x43onnectionError\x10\n\x12\x0c\n\x08\x44NSError\x10\x0b\x12 \n\x1c\x45xternalAccountRequiredError\x10\x0c\x12\x1a\n\x16IncorrectResponseError\x10\r\x12\x17\n\x13InvalidContactError\x10\x0e\x12\x12\n\x0eMalformedError\x10\x0f\x12\x16\n\x12OrderNotReadyError\x10\x10\x12\x14\n\x10RateLimitedError\x10\x11\x12\x1b\n\x17RejectedIdentifierError\x10\x12\x12\x0c\n\x08TLSError\x10\x13\x12\x15\n\x11UnauthorizedError\x10\x14\x12\x1b\n\x17UnsupportedContactError\x10\x15\x12\x1e\n\x1aUnsupportedIdentifierError\x10\x16\x12\x1b\n\x17UserActionRequiredError\x10\x17\x12\x1c\n\x18\x41utoRenewalCanceledError\x10\x18\x12\x1b\n\x17\x41utoRenewalExpiredError\x10\x19\x12\'\n#AutoRenewalCancellationInvalidError\x10\x1a\x12*\n&AutoRenewalRevocationNotSupportedError\x10\x1b*>\n\x12\x45\x41\x42SignatureMethod\x12\t\n\x05HS256\x10\x00\x12\t\n\x05HS384\x10\x01\x12\t\n\x05HS512\x10\x02\x12\x07\n\x03HS1\x10\x03*f\n\x0bOrderStatus\x12\x10\n\x0cOrderPending\x10\x00\x12\x0e\n\nOrderReady\x10\x01\x12\x13\n\x0fOrderProcessing\x10\x02\x12\x0e\n\nOrderValid\x10\x03\x12\x10\n\x0cOrderInvalid\x10\x04*\xb3\x01\n\x13\x41uthorizationStatus\x12\x18\n\x14\x41uthorizationPending\x10\x00\x12\x16\n\x12\x41uthorizationValid\x10\x01\x12\x18\n\x14\x41uthorizationInvalid\x10\x02\x12\x1c\n\x18\x41uthorizationDeactivated\x10\x03\x12\x18\n\x14\x41uthorizationExpired\x10\x04\x12\x18\n\x14\x41uthorizationRevoked\x10\x05*P\n\rChallengeType\x12\x13\n\x0f\x43hallengeHTTP01\x10\x00\x12\x12\n\x0e\x43hallengeDNS01\x10\x01\x12\x16\n\x12\x43hallengeTLSALPN01\x10\x02*j\n\x0f\x43hallengeStatus\x12\x14\n\x10\x43hallengePending\x10\x00\x12\x17\n\x13\x43hallengeProcessing\x10\x01\x12\x12\n\x0e\x43hallengeValid\x10\x02\x12\x14\n\x10\x43hallengeInvalid\x10\x03*N\n\nCertStatus\x12\x0f\n\x0b\x43\x65rtUnknown\x10\x00\x12\x0c\n\x08\x43\x65rtGood\x10\x01\x12\x0f\n\x0b\x43\x65rtRevoked\x10\x02\x12\x10\n\x0c\x43\x65rtUnissued\x10\x03*\xd7\x02\n\x10RevocationReason\x12\x15\n\x11RevocationUnknown\x10\x00\x12\x19\n\x15RevocationUnspecified\x10\x01\x12\x1b\n\x17RevocationKeyCompromise\x10\x02\x12\x1a\n\x16RevocationCACompromise\x10\x03\x12 \n\x1cRevocationAffiliationChanged\x10\x04\x12\x18\n\x14RevocationSuperseded\x10\x05\x12\"\n\x1eRevocationCessationOfOperation\x10\x06\x12\x1d\n\x19RevocationCertificateHold\x10\x07\x12\x1b\n\x17RevocationRemoveFromCRL\x10\x08\x12 \n\x1cRevocationPrivilegeWithdrawn\x10\t\x12\x1a\n\x16RevocationAACompromise\x10\n2\xf9\x06\n\x02\x43\x41\x12P\n\x0bValidateEAB\x12\x1e.cert_order.ValidateEABRequest\x1a\x1f.cert_order.ValidateEABResponse\"\x00\x12J\n\x0b\x43reateOrder\x12\x1e.cert_order.CreateOrderRequest\x1a\x19.cert_order.OrderResponse\"\x00\x12\x62\n\x13\x43reateAuthorization\x12&.cert_order.CreateAuthorizationRequest\x1a!.cert_order.AuthorizationResponse\"\x00\x12\x36\n\x08GetOrder\x12\x15.cert_order.IDRequest\x1a\x11.cert_order.Order\"\x00\x12N\n\rFinalizeOrder\x12 .cert_order.FinalizeOrderRequest\x1a\x19.cert_order.OrderResponse\"\x00\x12\x46\n\x10GetAuthorization\x12\x15.cert_order.IDRequest\x1a\x19.cert_order.Authorization\"\x00\x12U\n\x17\x44\x65\x61\x63tivateAuthorization\x12\x15.cert_order.IDRequest\x1a!.cert_order.AuthorizationResponse\"\x00\x12G\n\x0cGetChallenge\x12\x1e.cert_order.ChallengeIDRequest\x1a\x15.cert_order.Challenge\"\x00\x12Z\n\x11\x43ompleteChallenge\x12$.cert_order.CompleteChallengeRequest\x1a\x1d.cert_order.ChallengeResponse\"\x00\x12O\n\x0eGetCertificate\x12\x15.cert_order.IDRequest\x1a$.cert_order.CertificateChainResponse\"\x00\x12T\n\x11RevokeCertificate\x12\x1d.cert_order.RevokeCertRequest\x1a\x1e.cert_order.RevokeCertResponse\"\x00\x32R\n\x04OCSP\x12J\n\tCheckCert\x12\x1c.cert_order.CheckCertRequest\x1a\x1d.cert_order.CheckCertResponse\"\x00\x32\x89\x02\n\tValidator\x12R\n\x0eValidateHTTP01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x12Q\n\rValidateDNS01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x12U\n\x11ValidateTLSALPN01\x12 .cert_order.KeyValidationRequest\x1a\x1c.cert_order.ValidationResult\"\x00\x62\x06proto3'
   ,
   dependencies=[google_dot_protobuf_dot_wrappers__pb2.DESCRIPTOR,google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -56,8 +56,8 @@ _IDENTIFIERTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=3366,
-  serialized_end=3463,
+  serialized_start=3507,
+  serialized_end=3604,
 )
 _sym_db.RegisterEnumDescriptor(_IDENTIFIERTYPE)
 
@@ -212,8 +212,8 @@ _ERRORTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=3466,
-  serialized_end=4199,
+  serialized_start=3607,
+  serialized_end=4340,
 )
 _sym_db.RegisterEnumDescriptor(_ERRORTYPE)
 
@@ -248,8 +248,8 @@ _EABSIGNATUREMETHOD = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4201,
-  serialized_end=4263,
+  serialized_start=4342,
+  serialized_end=4404,
 )
 _sym_db.RegisterEnumDescriptor(_EABSIGNATUREMETHOD)
 
@@ -289,8 +289,8 @@ _ORDERSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4265,
-  serialized_end=4367,
+  serialized_start=4406,
+  serialized_end=4508,
 )
 _sym_db.RegisterEnumDescriptor(_ORDERSTATUS)
 
@@ -335,8 +335,8 @@ _AUTHORIZATIONSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4370,
-  serialized_end=4549,
+  serialized_start=4511,
+  serialized_end=4690,
 )
 _sym_db.RegisterEnumDescriptor(_AUTHORIZATIONSTATUS)
 
@@ -358,11 +358,16 @@ _CHALLENGETYPE = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='ChallengeTLSALPN01', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4551,
-  serialized_end=4607,
+  serialized_start=4692,
+  serialized_end=4772,
 )
 _sym_db.RegisterEnumDescriptor(_CHALLENGETYPE)
 
@@ -397,8 +402,8 @@ _CHALLENGESTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4609,
-  serialized_end=4715,
+  serialized_start=4774,
+  serialized_end=4880,
 )
 _sym_db.RegisterEnumDescriptor(_CHALLENGESTATUS)
 
@@ -433,8 +438,8 @@ _CERTSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4717,
-  serialized_end=4795,
+  serialized_start=4882,
+  serialized_end=4960,
 )
 _sym_db.RegisterEnumDescriptor(_CERTSTATUS)
 
@@ -504,8 +509,8 @@ _REVOCATIONREASON = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=4798,
-  serialized_end=5141,
+  serialized_start=4963,
+  serialized_end=5306,
 )
 _sym_db.RegisterEnumDescriptor(_REVOCATIONREASON)
 
@@ -559,6 +564,7 @@ AuthorizationExpired = 4
 AuthorizationRevoked = 5
 ChallengeHTTP01 = 0
 ChallengeDNS01 = 1
+ChallengeTLSALPN01 = 2
 ChallengePending = 0
 ChallengeProcessing = 1
 ChallengeValid = 2
@@ -963,6 +969,52 @@ _CREATEORDERREQUEST = _descriptor.Descriptor(
 )
 
 
+_CREATEAUTHORIZATIONREQUEST = _descriptor.Descriptor(
+  name='CreateAuthorizationRequest',
+  full_name='cert_order.CreateAuthorizationRequest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='identifier', full_name='cert_order.CreateAuthorizationRequest.identifier', index=0,
+      number=1, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='account_id', full_name='cert_order.CreateAuthorizationRequest.account_id', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='eab_id', full_name='cert_order.CreateAuthorizationRequest.eab_id', index=2,
+      number=3, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1098,
+  serialized_end=1236,
+)
+
+
 _ORDERRESPONSE = _descriptor.Descriptor(
   name='OrderResponse',
   full_name='cert_order.OrderResponse',
@@ -1002,8 +1054,8 @@ _ORDERRESPONSE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=1097,
-  serialized_end=1202,
+  serialized_start=1238,
+  serialized_end=1343,
 )
 
 
@@ -1046,8 +1098,8 @@ _AUTHORIZATIONRESPONSE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=1205,
-  serialized_end=1334,
+  serialized_start=1346,
+  serialized_end=1475,
 )
 
 
@@ -1090,8 +1142,8 @@ _CHALLENGERESPONSE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=1336,
-  serialized_end=1453,
+  serialized_start=1477,
+  serialized_end=1594,
 )
 
 
@@ -1122,8 +1174,8 @@ _IDREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1455,
-  serialized_end=1478,
+  serialized_start=1596,
+  serialized_end=1619,
 )
 
 
@@ -1161,8 +1213,8 @@ _CHALLENGEIDREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1480,
-  serialized_end=1529,
+  serialized_start=1621,
+  serialized_end=1670,
 )
 
 
@@ -1214,8 +1266,8 @@ _COMPLETECHALLENGEREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1531,
-  serialized_end=1635,
+  serialized_start=1672,
+  serialized_end=1776,
 )
 
 
@@ -1253,8 +1305,8 @@ _FINALIZEORDERREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1637,
-  serialized_end=1684,
+  serialized_start=1778,
+  serialized_end=1825,
 )
 
 
@@ -1334,8 +1386,8 @@ _ORDER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1687,
-  serialized_end=2009,
+  serialized_start=1828,
+  serialized_end=2150,
 )
 
 
@@ -1401,8 +1453,8 @@ _AUTHORIZATION = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2012,
-  serialized_end=2266,
+  serialized_start=2153,
+  serialized_end=2407,
 )
 
 
@@ -1461,8 +1513,8 @@ _REVOKECERTREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2269,
-  serialized_end=2430,
+  serialized_start=2410,
+  serialized_end=2571,
 )
 
 
@@ -1493,8 +1545,8 @@ _REVOKECERTRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2432,
-  serialized_end=2494,
+  serialized_start=2573,
+  serialized_end=2635,
 )
 
 
@@ -1560,8 +1612,8 @@ _CHALLENGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2497,
-  serialized_end=2740,
+  serialized_start=2638,
+  serialized_end=2881,
 )
 
 
@@ -1592,8 +1644,8 @@ _CERTIFICATECHAIN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2742,
-  serialized_end=2782,
+  serialized_start=2883,
+  serialized_end=2923,
 )
 
 
@@ -1631,8 +1683,8 @@ _CERTIFICATECHAINRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2785,
-  serialized_end=2922,
+  serialized_start=2926,
+  serialized_end=3063,
 )
 
 
@@ -1670,8 +1722,8 @@ _CHECKCERTREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2924,
-  serialized_end=2984,
+  serialized_start=3065,
+  serialized_end=3125,
 )
 
 
@@ -1744,8 +1796,8 @@ _CHECKCERTRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2987,
-  serialized_end=3364,
+  serialized_start=3128,
+  serialized_end=3505,
 )
 
 _IDENTIFIER.fields_by_name['id_type'].enum_type = _IDENTIFIERTYPE
@@ -1762,6 +1814,8 @@ _CREATEORDERREQUEST.fields_by_name['identifiers'].message_type = _IDENTIFIER
 _CREATEORDERREQUEST.fields_by_name['not_before'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _CREATEORDERREQUEST.fields_by_name['not_after'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _CREATEORDERREQUEST.fields_by_name['eab_id'].message_type = google_dot_protobuf_dot_wrappers__pb2._STRINGVALUE
+_CREATEAUTHORIZATIONREQUEST.fields_by_name['identifier'].message_type = _IDENTIFIER
+_CREATEAUTHORIZATIONREQUEST.fields_by_name['eab_id'].message_type = google_dot_protobuf_dot_wrappers__pb2._STRINGVALUE
 _ORDERRESPONSE.fields_by_name['order'].message_type = _ORDER
 _ORDERRESPONSE.fields_by_name['error'].message_type = _ERRORRESPONSE
 _ORDERRESPONSE.oneofs_by_name['result'].fields.append(
@@ -1821,6 +1875,7 @@ DESCRIPTOR.message_types_by_name['ValidationResult'] = _VALIDATIONRESULT
 DESCRIPTOR.message_types_by_name['ValidateEABRequest'] = _VALIDATEEABREQUEST
 DESCRIPTOR.message_types_by_name['ValidateEABResponse'] = _VALIDATEEABRESPONSE
 DESCRIPTOR.message_types_by_name['CreateOrderRequest'] = _CREATEORDERREQUEST
+DESCRIPTOR.message_types_by_name['CreateAuthorizationRequest'] = _CREATEAUTHORIZATIONREQUEST
 DESCRIPTOR.message_types_by_name['OrderResponse'] = _ORDERRESPONSE
 DESCRIPTOR.message_types_by_name['AuthorizationResponse'] = _AUTHORIZATIONRESPONSE
 DESCRIPTOR.message_types_by_name['ChallengeResponse'] = _CHALLENGERESPONSE
@@ -1903,6 +1958,13 @@ CreateOrderRequest = _reflection.GeneratedProtocolMessageType('CreateOrderReques
   # @@protoc_insertion_point(class_scope:cert_order.CreateOrderRequest)
   })
 _sym_db.RegisterMessage(CreateOrderRequest)
+
+CreateAuthorizationRequest = _reflection.GeneratedProtocolMessageType('CreateAuthorizationRequest', (_message.Message,), {
+  'DESCRIPTOR' : _CREATEAUTHORIZATIONREQUEST,
+  '__module__' : 'order_pb2'
+  # @@protoc_insertion_point(class_scope:cert_order.CreateAuthorizationRequest)
+  })
+_sym_db.RegisterMessage(CreateAuthorizationRequest)
 
 OrderResponse = _reflection.GeneratedProtocolMessageType('OrderResponse', (_message.Message,), {
   'DESCRIPTOR' : _ORDERRESPONSE,
@@ -2025,8 +2087,8 @@ _CA = _descriptor.ServiceDescriptor(
   index=0,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=5144,
-  serialized_end=5933,
+  serialized_start=5309,
+  serialized_end=6198,
   methods=[
   _descriptor.MethodDescriptor(
     name='ValidateEAB',
@@ -2049,9 +2111,19 @@ _CA = _descriptor.ServiceDescriptor(
     create_key=_descriptor._internal_create_key,
   ),
   _descriptor.MethodDescriptor(
+    name='CreateAuthorization',
+    full_name='cert_order.CA.CreateAuthorization',
+    index=2,
+    containing_service=None,
+    input_type=_CREATEAUTHORIZATIONREQUEST,
+    output_type=_AUTHORIZATIONRESPONSE,
+    serialized_options=None,
+    create_key=_descriptor._internal_create_key,
+  ),
+  _descriptor.MethodDescriptor(
     name='GetOrder',
     full_name='cert_order.CA.GetOrder',
-    index=2,
+    index=3,
     containing_service=None,
     input_type=_IDREQUEST,
     output_type=_ORDER,
@@ -2061,7 +2133,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='FinalizeOrder',
     full_name='cert_order.CA.FinalizeOrder',
-    index=3,
+    index=4,
     containing_service=None,
     input_type=_FINALIZEORDERREQUEST,
     output_type=_ORDERRESPONSE,
@@ -2071,7 +2143,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='GetAuthorization',
     full_name='cert_order.CA.GetAuthorization',
-    index=4,
+    index=5,
     containing_service=None,
     input_type=_IDREQUEST,
     output_type=_AUTHORIZATION,
@@ -2081,7 +2153,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='DeactivateAuthorization',
     full_name='cert_order.CA.DeactivateAuthorization',
-    index=5,
+    index=6,
     containing_service=None,
     input_type=_IDREQUEST,
     output_type=_AUTHORIZATIONRESPONSE,
@@ -2091,7 +2163,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='GetChallenge',
     full_name='cert_order.CA.GetChallenge',
-    index=6,
+    index=7,
     containing_service=None,
     input_type=_CHALLENGEIDREQUEST,
     output_type=_CHALLENGE,
@@ -2101,7 +2173,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='CompleteChallenge',
     full_name='cert_order.CA.CompleteChallenge',
-    index=7,
+    index=8,
     containing_service=None,
     input_type=_COMPLETECHALLENGEREQUEST,
     output_type=_CHALLENGERESPONSE,
@@ -2111,7 +2183,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='GetCertificate',
     full_name='cert_order.CA.GetCertificate',
-    index=8,
+    index=9,
     containing_service=None,
     input_type=_IDREQUEST,
     output_type=_CERTIFICATECHAINRESPONSE,
@@ -2121,7 +2193,7 @@ _CA = _descriptor.ServiceDescriptor(
   _descriptor.MethodDescriptor(
     name='RevokeCertificate',
     full_name='cert_order.CA.RevokeCertificate',
-    index=9,
+    index=10,
     containing_service=None,
     input_type=_REVOKECERTREQUEST,
     output_type=_REVOKECERTRESPONSE,
@@ -2141,8 +2213,8 @@ _OCSP = _descriptor.ServiceDescriptor(
   index=1,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=5935,
-  serialized_end=6017,
+  serialized_start=6200,
+  serialized_end=6282,
   methods=[
   _descriptor.MethodDescriptor(
     name='CheckCert',
@@ -2167,8 +2239,8 @@ _VALIDATOR = _descriptor.ServiceDescriptor(
   index=2,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=6020,
-  serialized_end=6285,
+  serialized_start=6285,
+  serialized_end=6550,
   methods=[
   _descriptor.MethodDescriptor(
     name='ValidateHTTP01',

@@ -24,6 +24,11 @@ class CAStub(object):
                 request_serializer=order__pb2.CreateOrderRequest.SerializeToString,
                 response_deserializer=order__pb2.OrderResponse.FromString,
                 )
+        self.CreateAuthorization = channel.unary_unary(
+                '/cert_order.CA/CreateAuthorization',
+                request_serializer=order__pb2.CreateAuthorizationRequest.SerializeToString,
+                response_deserializer=order__pb2.AuthorizationResponse.FromString,
+                )
         self.GetOrder = channel.unary_unary(
                 '/cert_order.CA/GetOrder',
                 request_serializer=order__pb2.IDRequest.SerializeToString,
@@ -76,6 +81,12 @@ class CAServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CreateOrder(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateAuthorization(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -141,6 +152,11 @@ def add_CAServicer_to_server(servicer, server):
                     servicer.CreateOrder,
                     request_deserializer=order__pb2.CreateOrderRequest.FromString,
                     response_serializer=order__pb2.OrderResponse.SerializeToString,
+            ),
+            'CreateAuthorization': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateAuthorization,
+                    request_deserializer=order__pb2.CreateAuthorizationRequest.FromString,
+                    response_serializer=order__pb2.AuthorizationResponse.SerializeToString,
             ),
             'GetOrder': grpc.unary_unary_rpc_method_handler(
                     servicer.GetOrder,
@@ -223,6 +239,23 @@ class CA(object):
         return grpc.experimental.unary_unary(request, target, '/cert_order.CA/CreateOrder',
             order__pb2.CreateOrderRequest.SerializeToString,
             order__pb2.OrderResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateAuthorization(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.CA/CreateAuthorization',
+            order__pb2.CreateAuthorizationRequest.SerializeToString,
+            order__pb2.AuthorizationResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

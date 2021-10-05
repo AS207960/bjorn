@@ -224,6 +224,7 @@ message RevokeCertResponse {
 enum ChallengeType {
   ChallengeHTTP01 = 0;
   ChallengeDNS01 = 1;
+  ChallengeTLSALPN01 = 2;
 }
 
 enum ChallengeStatus {

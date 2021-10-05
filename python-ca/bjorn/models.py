@@ -147,6 +147,10 @@ class Authorization(models.Model):
         else:
             return order_pb2.AuthorizationPending
 
+    @property
+    def id_rpc(self):
+        return id_to_rpc(self.id_type, self.identifier)
+
     def to_rpc(self):
         challenges = []
 
@@ -163,7 +167,7 @@ class Authorization(models.Model):
         a = order_pb2.Authorization(
             id=self.id.bytes,
             status=self.rpc_status,
-            identifier=id_to_rpc(self.id_type, self.identifier),
+            identifier=self.id_rpc,
             challenges=challenges,
         )
         a.expires.FromDatetime(self.expires_at)
@@ -172,15 +176,19 @@ class Authorization(models.Model):
 
 class AuthorizationChallenge(models.Model):
     TYPE_HTTP01 = "h"
+    TYPE_DNS01 = "d"
+    TYPE_TLSALPN01 = "t"
 
     TYPES = (
-        (TYPE_HTTP01, "HTTP-01"),
+        (TYPE_HTTP01, "http-01"),
+        (TYPE_DNS01, "dns-01"),
+        (TYPE_TLSALPN01, "tls-alpn-01"),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     authorization = models.ForeignKey(Authorization, on_delete=models.CASCADE, related_name='challenges')
     validated_at = models.DateTimeField(blank=True, null=True)
-    processing = models.BooleanField(blank=True, default=True)
+    processing = models.BooleanField(blank=True, default=False)
     error = models.JSONField(blank=True, null=True)
     type = models.CharField(max_length=1, choices=TYPES)
     token = models.CharField(max_length=255, null=True, blank=True)
@@ -199,6 +207,10 @@ class AuthorizationChallenge(models.Model):
     def to_rpc(self):
         if self.type == self.TYPE_HTTP01:
             challenge_type = order_pb2.ChallengeHTTP01
+        elif self.type == self.TYPE_DNS01:
+            challenge_type = order_pb2.ChallengeDNS01
+        elif self.type == self.TYPE_TLSALPN01:
+            challenge_type = order_pb2.ChallengeTLSALPN01
         else:
             challenge_type = None
 

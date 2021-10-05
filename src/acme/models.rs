@@ -246,6 +246,7 @@ impl Authorization {
             challenge_type: match crate::cert_order::ChallengeType::from_i32(ca_obj.r#type) {
                 Some(crate::cert_order::ChallengeType::ChallengeHttp01) => crate::types::challenge::Type::HTTP01,
                 Some(crate::cert_order::ChallengeType::ChallengeDns01) => crate::types::challenge::Type::DNS01,
+                Some(crate::cert_order::ChallengeType::ChallengeTlsalpn01) => crate::types::challenge::Type::TLSALPN01,
                 None => return Err(crate::internal_server_error!())
             },
             url: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::challenge:

@@ -54,7 +54,7 @@ class OCSPServicer(order_pb2_grpc.OCSPServicer):
             if certificate.revocation_timestamp:
                 resp.revocation_timestamp.FromDatetime(certificate.revocation_timestamp)
             if certificate.invalidity_date:
-                resp.invalidity_date    .FromDatetime(certificate.invalidity_date)
+                resp.invalidity_date.FromDatetime(certificate.invalidity_date)
             return resp
         else:
             resp = order_pb2.CheckCertResponse(status=order_pb2.CertGood)
@@ -195,9 +195,14 @@ class CAServicer(order_pb2_grpc.CAServicer):
                 id_type=i.id_type,
                 identifier=i.identifier,
             )
-            challenge = models.AuthorizationChallenge(
+            challenge_http_01 = models.AuthorizationChallenge(
                 authorization=authorization,
                 type=models.AuthorizationChallenge.TYPE_HTTP01,
+                token=base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().replace("=", "")
+            )
+            challenge_tls_alpn_01 = models.AuthorizationChallenge(
+                authorization=authorization,
+                type=models.AuthorizationChallenge.TYPE_TLSALPN01,
                 token=base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().replace("=", "")
             )
 
@@ -213,10 +218,12 @@ class CAServicer(order_pb2_grpc.CAServicer):
                     authorizations.append(existing_auth)
                 else:
                     authorizations.append(authorization)
-                    challenges.append(challenge)
+                    challenges.append(challenge_http_01)
+                    challenges.append(challenge_tls_alpn_01)
             else:
                 authorizations.append(authorization)
-                challenges.append(challenge)
+                challenges.append(challenge_http_01)
+                challenges.append(challenge_tls_alpn_01)
 
         with transaction.atomic():
             order.save()
@@ -262,8 +269,8 @@ class CAServicer(order_pb2_grpc.CAServicer):
         aid = uuid.UUID(bytes=request.auth_id)
         cid = uuid.UUID(bytes=request.id)
 
-        chall = models.AuthorizationChallenge.objects\
-            .filter(id=cid, authorization_id=aid).first() # type: models.AuthorizationChallenge
+        chall = models.AuthorizationChallenge.objects \
+            .filter(id=cid, authorization_id=aid).first()  # type: models.AuthorizationChallenge
 
         if not chall:
             context.set_details("Requested challenge not found")
@@ -273,52 +280,62 @@ class CAServicer(order_pb2_grpc.CAServicer):
         return chall.to_rpc()
 
     def complete_challenge_task(self, chall: models.AuthorizationChallenge, thumbprint: str):
-        if chall.type == chall.TYPE_HTTP01:
-            try:
-                req = order_pb2.KeyValidationRequest(
-                    token=chall.token,
-                    account_thumbprint=thumbprint,
-                    identifier=chall.authorization.identifier
-                )
+        try:
+            req = order_pb2.KeyValidationRequest(
+                token=chall.token,
+                account_thumbprint=thumbprint,
+                identifier=chall.authorization.id_rpc
+            )
+            print(req)
+            if chall.type == chall.TYPE_HTTP01:
                 res = self._validator_stub.ValidateHTTP01(req)
-                print(res)
+            elif chall.type == chall.TYPE_DNS01:
+                res = self._validator_stub.ValidateDNS01(req)
+            elif chall.type == chall.TYPE_TLSALPN01:
+                res = self._validator_stub.ValidateTLSALPN01(req)
+            else:
+                return
 
-                if res.valid:
-                    chall.validated_at = timezone.now()
-                    chall.save()
-                    chall.authorization.state = chall.authorization.STATE_VALID
-                    chall.authorization.save()
-                else:
-                    if res.error:
-                        chall.error = google.protobuf.json_format.MessageToDict(res.error)
-                    chall.save()
-                    chall.authorization.state = chall.authorization.STATE_INVALID
-                    chall.authorization.save()
-            except grpc.RpcError as e:
-                print(e)
-                chall.error = google.protobuf.json_format.MessageToDict(order_pb2.ErrorResponse(
-                    errors=[order_pb2.Error(
-                        error_type=order_pb2.ServerInternalError,
-                        title="Internal Server Error",
-                        status=500,
-                        detail="Challenge verification unexpectedly failed"
-                    )]
-                ))
+            print(res)
+
+            if res.valid:
+                chall.validated_at = timezone.now()
+                chall.save()
+                chall.authorization.state = chall.authorization.STATE_VALID
+                chall.authorization.save()
+            else:
+                if res.error:
+                    chall.error = google.protobuf.json_format.MessageToDict(res.error)
                 chall.save()
                 chall.authorization.state = chall.authorization.STATE_INVALID
                 chall.authorization.save()
+        except grpc.RpcError as e:
+            print(e)
+            chall.error = google.protobuf.json_format.MessageToDict(order_pb2.ErrorResponse(
+                errors=[order_pb2.Error(
+                    error_type=order_pb2.ServerInternalError,
+                    title="Internal Server Error",
+                    status=500,
+                    detail="Challenge verification unexpectedly failed"
+                )]
+            ))
+            chall.save()
+            chall.authorization.state = chall.authorization.STATE_INVALID
+            chall.authorization.save()
 
     def CompleteChallenge(self, request: order_pb2.CompleteChallengeRequest, context):
         aid = uuid.UUID(bytes=request.auth_id)
         cid = uuid.UUID(bytes=request.id)
 
-        chall = models.AuthorizationChallenge.objects\
-            .filter(id=cid, authorization_id=aid).first() # type: models.AuthorizationChallenge
+        chall = models.AuthorizationChallenge.objects \
+            .filter(id=cid, authorization_id=aid).first()  # type: models.AuthorizationChallenge
 
         if not chall:
             context.set_details("Requested challenge not found")
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return order_pb2.Challenge()
+
+        print(chall)
 
         if chall.rpc_status not in (order_pb2.ChallengePending, order_pb2.ChallengeProcessing):
             return order_pb2.ChallengeResponse(
