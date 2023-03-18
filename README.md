@@ -72,6 +72,7 @@ A basic diagram of their inter-working is as follows;
 * [RFC 8738](https://datatracker.ietf.org/doc/html/rfc8738) - Automated Certificate Management Environment (ACME) IP Identifier Validation Extension
 * [RFC 8954](https://datatracker.ietf.org/doc/html/rfc8954) - Online Certificate Status Protocol (OCSP) Nonce Extension
 * [draft-shoemaker-caa-ip-01](https://datatracker.ietf.org/doc/html/draft-shoemaker-caa-ip-01) - Certification Authority Authorization (CAA) Validation for IP Addresses
+* [draft-misell-acme-onion-00](https://datatracker.ietf.org/doc/html/draft-misell-acme-onion-00) - Automated Certificate Management Environment (ACME) Extensions for ".onion" Domain Names
 
 Note: CAA iodef is not yet supported
 
@@ -193,6 +194,7 @@ configured. DNSSEC validation is vital to the integrity of CAA.
 ```toml
 [development]
 caa_identities = ["bjorn.as207960.net"]
+tor_storage = "./tor"
 ```
 
 #### Configuration explanation.
@@ -200,6 +202,9 @@ caa_identities = ["bjorn.as207960.net"]
 ##### `caa_identities`
 Which CAA issuers identities are recognised by the ACME server as allowing
 issuance by this CA (ideally the same as configured on Björn).
+
+##### `tor_storage`
+The directory in which Frida will store cached state for Tor hidden services.
 
 ## Inter-working protocol description
 
