@@ -1,7 +1,7 @@
 use crate::types;
-use std::io::Read;
 use std::convert::TryInto;
 use crate::types::jose::{JWSProtectedHeader, FlattenedJWS};
+use base64::prelude::*;
 
 #[derive(Debug)]
 pub enum JWSRequestKey {
@@ -25,8 +25,8 @@ pub(crate) struct JWSRequestInner<R> where R: serde::de::DeserializeOwned + std:
     pub key: JWSRequestKey,
 }
 
-fn get_flattened_jws(
-    request: &rocket::request::Request, data: rocket::data::Data,
+async fn get_flattened_jws(
+    request: &rocket::request::Request<'_>, data: rocket::data::Data<'_>,
 ) -> Result<FlattenedJWS, (rocket::http::Status, types::error::Error)> {
     let ct = request.headers().get_one("Content-Type").unwrap_or_default();
     if ct != "application/jose+json" {
@@ -40,18 +40,20 @@ fn get_flattened_jws(
             identifier: None,
         }));
     }
-    let mut body = String::new();
-    if let Err(err) = data.open().read_to_string(&mut body) {
-        return Err((rocket::http::Status::BadRequest, types::error::Error {
-            error_type: types::error::Type::Malformed,
-            status: 400,
-            title: "Invalid UTF8".to_string(),
-            detail: format!("Invalid UTF8 received in body: '{}'", err),
-            sub_problems: vec![],
-            instance: None,
-            identifier: None,
-        }));
-    }
+    let body = match data.open(4 *  rocket::data::ByteUnit::MiB).into_string().await {
+        Ok(v) => v,
+        Err(err) => {
+            return Err((rocket::http::Status::BadRequest, types::error::Error {
+                error_type: types::error::Type::Malformed,
+                status: 400,
+                title: "Invalid UTF8".to_string(),
+                detail: format!("Invalid UTF8 received in body: '{}'", err),
+                sub_problems: vec![],
+                instance: None,
+                identifier: None,
+            }));
+        }
+    };
     let jws = match serde_json::from_str::<types::jose::FlattenedJWS>(&body) {
         Ok(j) => j,
         Err(err) => {
@@ -73,7 +75,7 @@ fn get_flattened_jws(
 pub fn start_decode_jws(
     jws: &FlattenedJWS,
 ) -> Result<(JWSProtectedHeader, Vec<u8>, Vec<u8>), (rocket::http::Status, types::error::Error)> {
-    let header_bytes = match base64::decode_config(&jws.protected, base64::URL_SAFE_NO_PAD) {
+    let header_bytes = match BASE64_URL_SAFE_NO_PAD.decode(&jws.protected) {
         Ok(h) => h,
         Err(err) => {
             return Err((rocket::http::Status::BadRequest, types::error::Error {
@@ -87,7 +89,7 @@ pub fn start_decode_jws(
             }));
         }
     };
-    let signature_bytes = match base64::decode_config(&jws.signature, base64::URL_SAFE_NO_PAD) {
+    let signature_bytes = match BASE64_URL_SAFE_NO_PAD.decode(&jws.signature) {
         Ok(h) => h,
         Err(err) => {
             return Err((rocket::http::Status::BadRequest, types::error::Error {
@@ -101,7 +103,7 @@ pub fn start_decode_jws(
             }));
         }
     };
-    let payload_bytes = match base64::decode_config(&jws.payload, base64::URL_SAFE_NO_PAD) {
+    let payload_bytes = match BASE64_URL_SAFE_NO_PAD.decode(&jws.payload) {
         Ok(h) => h,
         Err(err) => {
             return Err((rocket::http::Status::BadRequest, types::error::Error {
@@ -160,7 +162,7 @@ pub fn start_decode_jws(
     Ok((header, payload_bytes, signature_bytes))
 }
 
-fn verify_jws_sig(
+async fn verify_jws_sig(
     jws: &FlattenedJWS, header: &JWSProtectedHeader, signature_bytes: &[u8], db: &crate::DBConn,
 ) -> Result<JWSRequestKey, (rocket::http::Status, types::error::Error)> {
     let key: JWSRequestKey = match &header.key {
@@ -185,7 +187,7 @@ fn verify_jws_sig(
             }
         }
         types::jose::JWKKey::KID(kid) => {
-            match match super::lookup_account(&kid, &db) {
+            match match super::lookup_account(&kid, &db).await {
                 Ok(v) => v,
                 Err(e) => {
                     return Err((rocket::http::Status::BadRequest, e));
@@ -319,13 +321,13 @@ fn decode_jws_payload<R: serde::de::DeserializeOwned>(
 }
 
 impl<R: serde::de::DeserializeOwned + std::fmt::Debug> JWSRequestInner<R> {
-    pub fn from_jws(
-        uri: &str, jws: FlattenedJWS, config: &super::Config, db: &crate::DBConn,
+    pub async fn from_jws(
+        uri: rocket::http::uri::Path<'_>, jws: FlattenedJWS, config: &super::Config, db: &crate::DBConn,
     ) -> crate::acme::ACMEResult<Self> {
         let (header, payload_bytes, signature_bytes) =
             start_decode_jws(&jws).map_err(|e| e.1)?;
 
-        let req_url = format!("{}{}", config.external_uri, uri);
+        let req_url = format!("{}{}", config.external_uri, uri.as_str());
         if req_url != header.url {
             return Err(types::error::Error {
                 error_type: types::error::Type::Malformed,
@@ -338,7 +340,7 @@ impl<R: serde::de::DeserializeOwned + std::fmt::Debug> JWSRequestInner<R> {
             });
         }
 
-        let key = verify_jws_sig(&jws, &header, &signature_bytes, &db).map_err(|e| e.1)?;
+        let key = verify_jws_sig(&jws, &header, &signature_bytes, &db).await.map_err(|e| e.1)?;
 
         let payload = decode_jws_payload(&payload_bytes).map_err(|e| e.1)?;
 
@@ -349,18 +351,19 @@ impl<R: serde::de::DeserializeOwned + std::fmt::Debug> JWSRequestInner<R> {
     }
 }
 
-impl<R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDataSimple for JWSRequest<R> {
+#[rocket::async_trait]
+impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromData<'r> for JWSRequest<R> {
     type Error = types::error::Error;
 
-    fn from_data(request: &rocket::request::Request<'_>, data: rocket::data::Data) -> rocket::data::Outcome<Self, Self::Error> {
-        let global_config = match request.guard::<rocket::State<super::Config>>() {
+    async fn from_data(request: &'r rocket::request::Request<'_>, data: rocket::data::Data<'r>) -> rocket::data::Outcome<'r, Self> {
+        let global_config = match request.guard::<&rocket::State<super::Config>>().await {
             rocket::request::Outcome::Success(v) => v,
             rocket::request::Outcome::Failure(_) => {
                 return rocket::data::Outcome::Failure((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
             }
             rocket::request::Outcome::Forward(_) => unreachable!()
         };
-        let db = match request.guard::<crate::DBConn>() {
+        let db = match request.guard::<crate::DBConn>().await {
             rocket::request::Outcome::Success(v) => v,
             rocket::request::Outcome::Failure(_) => {
                 return rocket::data::Outcome::Failure((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
@@ -368,7 +371,7 @@ impl<R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDataSim
             rocket::request::Outcome::Forward(_) => unreachable!()
         };
 
-        let jws = match get_flattened_jws(request, data) {
+        let jws = match get_flattened_jws(request, data).await {
             Ok(v) => v,
             Err(e) => return rocket::data::Outcome::Failure(e)
         };
@@ -392,7 +395,7 @@ impl<R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDataSim
                 }));
             }
         };
-        if let Err(err) = super::replay::verify_nonce(&nonce, &db) {
+        if let Err(err) = super::replay::verify_nonce(&nonce, &db).await {
             return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, err));
         }
 
@@ -409,7 +412,7 @@ impl<R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDataSim
             }));
         }
 
-        let key = match verify_jws_sig(&jws, &header,  &signature_bytes, &db) {
+        let key = match verify_jws_sig(&jws, &header,  &signature_bytes, &db).await {
             Ok(v) => v,
             Err(e) => return rocket::data::Outcome::Failure(e)
         };
@@ -436,6 +439,6 @@ pub fn make_jwk_thumbprint(jwk: &super::types::jose::JWK) -> String {
     let jwk: std::collections::BTreeMap<String, serde_json::Value> = serde_json::from_str(&jwk).unwrap();
     let jwk = serde_json::to_string(&jwk).unwrap();
     let thumbprint_bytes = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), jwk.as_bytes()).unwrap().to_vec();
-    let thumbprint = base64::encode_config(&thumbprint_bytes, base64::URL_SAFE_NO_PAD);
+    let thumbprint = BASE64_URL_SAFE_NO_PAD.encode(&thumbprint_bytes);
     thumbprint
 }

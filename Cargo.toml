@@ -1,10 +1,10 @@
-cargo-features = ["strip"]
-
 [package]
 name = "bjorn"
-version = "0.1.0"
-authors = ["Q <q@as207960.net>"]
+version = "0.2.0"
+authors = ["Q Misell <q@as207960.net>"]
 edition = "2018"
+readme = "README.md"
+license = "MIT"
 
 [profile.release]
 strip = true
@@ -15,35 +15,38 @@ lto = true
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
-rocket = "0.4"
-rocket_contrib = { version = "0.4", default-features = false, features = ["json", "diesel_postgres_pool", "tera_templates"] }
+rocket = { version = "0.5.0-rc.2", features = ["json"] }
+rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
+rocket_sync_db_pools = { version = "0.1.0-rc.2", features = ["diesel_postgres_pool"] }
 postgres = { version = "0.19", features = ["with-chrono-0_4", "with-uuid-0_8"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
-base64 = "0.13"
+base64 = "0.21.0"
 lazy_static = "1"
 tokio-openssl = "0.6"
 openssl = "0.10"
 openssl-sys = "0.9"
 log = "0.4"
-diesel = { version = "1", features = ["uuidv07", "chrono", "serde_json"] }
+diesel = { version = "1", features = ["postgres", "uuidv07", "extras"] }
 diesel_migrations = "1"
 diesel-derive-enum = { version = "1", features = ["postgres"] }
 url = "2"
-tonic = "0.5"
-prost = "0.8"
-prost-types = "0.8"
+tonic = "0.8.3"
+prost = "0.11.8"
+prost-types = "0.11.8"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net"] }
 hex = "0.4"
-asn1 = "0.6"
+asn1 = "0.13.0"
 libc = "0.2"
-foreign-types = "0.3.1"
+foreign-types = "0.3"
 pretty_env_logger = "0.4"
 trust-dns-proto = "*"
 trust-dns-resolver = "*"
 reqwest = { version = "0.11", features = ["gzip", "brotli", "deflate"] }
-xml_serde = { git = "https://github.com/as207960/xml-serde", rev = "9fc66f9f5f5927c01b874b17c3e0839169785dff" }
-xmlsec = { path = "../rust-xmlsec" }
+figment = "0.10"
+futures = "0.3.27"
+torrosion = "0"
+hyper = "0.14.25"
 
 [build-dependencies]
-tonic-build = "0.5"
+tonic-build = "0.8.4"

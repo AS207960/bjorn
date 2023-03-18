@@ -84,13 +84,13 @@ pub struct Signature<'a> {
 
 #[derive(asn1::Asn1Read, asn1::Asn1Write, Debug, Clone)]
 pub struct SignatureAlgorithmIdentifier<'a> {
-    pub algorithm: asn1::ObjectIdentifier<'a>,
+    pub algorithm: asn1::ObjectIdentifier,
     pub parameters: Option<asn1::Tlv<'a>>,
 }
 
 #[derive(asn1::Asn1Read, asn1::Asn1Write, Debug, Clone)]
 pub struct DigestAlgorithmIdentifier<'a> {
-    pub id: asn1::ObjectIdentifier<'a>,
+    pub id: asn1::ObjectIdentifier,
     pub parameters: Option<asn1::Tlv<'a>>,
 }
 
@@ -99,7 +99,7 @@ pub type ExtensionsWriter<'a> = CowSequenceOfWriter<'a, ExtensionWrite<'a>>;
 
 #[derive(asn1::Asn1Read, Debug)]
 pub struct Extension<'a> {
-    pub extension_id: asn1::ObjectIdentifier<'a>,
+    pub extension_id: asn1::ObjectIdentifier,
     #[default(false)]
     pub critical: bool,
     pub extension_value: &'a [u8]
@@ -107,7 +107,7 @@ pub struct Extension<'a> {
 
 #[derive(asn1::Asn1Write, Debug, Clone)]
 pub struct ExtensionWrite<'a> {
-    pub extension_id: asn1::ObjectIdentifier<'a>,
+    pub extension_id: asn1::ObjectIdentifier,
     #[default(false)]
     pub critical: bool,
     pub extension_value: CowBytes<'a>
@@ -115,7 +115,7 @@ pub struct ExtensionWrite<'a> {
 
 #[derive(asn1::Asn1Write, Debug)]
 pub struct ResponseBytes<'a> {
-    pub response_type: asn1::ObjectIdentifier<'a>,
+    pub response_type: asn1::ObjectIdentifier,
     pub response: CowBytes<'a>
 }
 
@@ -132,41 +132,43 @@ pub struct BitStringWritable<'a> {
     pub value: &'a [u8]
 }
 
-impl<'a> asn1::SimpleAsn1Writable<'a> for BitStringWritable<'a> {
-    const TAG: u8 = 0x03;
+impl<'a> asn1::SimpleAsn1Writable for BitStringWritable<'a> {
+    const TAG: asn1::Tag = asn1::Tag::primitive(0x03);
 
-    fn write_data(&self, dest: &mut Vec<u8>) {
-        dest.push(0);
-        dest.extend_from_slice(self.value);
+    fn write_data(&self, dest: &mut asn1::WriteBuf) -> Result<(), asn1::WriteError> {
+        dest.push_byte(0)?;
+        dest.push_slice(self.value)?;
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CowBytes<'a>(pub std::borrow::Cow<'a, [u8]>);
 
-impl<'a> asn1::SimpleAsn1Writable<'a> for CowBytes<'a> {
-    const TAG: u8 = 0x04;
+impl<'a> asn1::SimpleAsn1Writable for CowBytes<'a> {
+    const TAG: asn1::Tag = asn1::Tag::primitive(0x04);
 
-    fn write_data(&self, dest: &mut Vec<u8>) {
-        dest.extend_from_slice(self.0.as_ref());
+    fn write_data(&self, dest: &mut asn1::WriteBuf) -> Result<(), asn1::WriteError> {
+        dest.push_slice(self.0.as_ref())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CowSequenceOfWriter<'a, T>(pub std::borrow::Cow<'a, [T]>) where
-    T: asn1::Asn1Writable<'a> + ToOwned + Clone;
+    T: asn1::Asn1Writable + ToOwned + Clone;
 
-impl<'a, T> asn1::SimpleAsn1Writable<'a> for CowSequenceOfWriter<'a, T>
+impl<'a, T> asn1::SimpleAsn1Writable for CowSequenceOfWriter<'a, T>
     where
-        T: asn1::Asn1Writable<'a> + ToOwned + Clone
+        T: asn1::Asn1Writable + ToOwned + Clone
 {
-    const TAG: u8 = 0x10 | 0x20;
+    const TAG: asn1::Tag = asn1::Tag::primitive(0x10 | 0x20);
 
-    fn write_data(&self, dest: &mut Vec<u8>) {
+    fn write_data(&self, dest: &mut asn1::WriteBuf) -> Result<(), asn1::WriteError> {
         let mut w = asn1::Writer::new(dest);
         for el in self.0.as_ref() {
-            w.write_element(el);
+            w.write_element(el)?;
         }
+        Ok(())
     }
 }
 
@@ -239,15 +241,15 @@ impl Enumerated {
     }
 }
 
-impl<'a> asn1::SimpleAsn1Writable<'a> for Enumerated {
-    const TAG: u8 = 0xa;
+impl asn1::SimpleAsn1Writable for Enumerated {
+    const TAG: asn1::Tag = asn1::Tag::primitive(0x0a);
 
-    fn write_data(&self, dest: &mut Vec<u8>) {
+    fn write_data(&self, dest: &mut asn1::WriteBuf) -> Result<(), asn1::WriteError> {
         u32::write_data(&self.0, dest)
     }
 }
 
-pub type AcceptableResponses<'a> = asn1::SequenceOf<'a, asn1::ObjectIdentifier<'a>>;
+pub type AcceptableResponses<'a> = asn1::SequenceOf<'a, asn1::ObjectIdentifier>;
 
 #[derive(asn1::Asn1Read)]
 pub struct ServiceLocator<'a> {
@@ -261,10 +263,10 @@ pub struct AccessDescription<'a> {
     pub access_location: asn1::Tlv<'a>
 }
 
-pub type PreferredSignatureAlgorithms<'a> = asn1::SequenceOf<'a, PreferredSignatureAlgorithm<'a>>;
+pub type PreferredSignatureAlgorithms<'a> = asn1::SequenceOf<'a, PreferredSignatureAlgorithm>;
 
 #[derive(asn1::Asn1Read, Debug)]
-pub struct PreferredSignatureAlgorithm<'a> {
-    pub sig_id: asn1::ObjectIdentifier<'a>,
-    pub cert_id: Option<asn1::ObjectIdentifier<'a>>,
+pub struct PreferredSignatureAlgorithm {
+    pub sig_id: asn1::ObjectIdentifier,
+    pub cert_id: Option<asn1::ObjectIdentifier>,
 }

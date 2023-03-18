@@ -1,5 +1,7 @@
 use super::schema::*;
 use diesel::prelude::*;
+use base64::prelude::*;
+use futures::StreamExt;
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
 #[primary_key(nonce)]
@@ -46,13 +48,14 @@ pub struct AccountContact {
 
 impl Account {
     pub fn kid(&self) -> String {
-        rocket::uri!(crate::acme::account: crate::util::uuid_as_b64(&self.id)).to_string()
+        rocket::uri!(crate::acme::account(crate::util::uuid_as_b64(&self.id))).to_string()
     }
 
-    pub(crate) fn to_json(&self, db: &crate::DBConn, conf: &crate::acme::Config) -> crate::acme::ACMEResult<crate::types::account::Account> {
-        let account_contacts: Vec<super::models::AccountContact> = crate::try_db_result!(super::schema::account_contacts::dsl::account_contacts.filter(
-            super::schema::account_contacts::dsl::account.eq(&self.id)
-        ).load(&db.0), "Failed to get account contacts: {}")?;
+    pub(crate) async fn to_json(&self, db: &crate::DBConn, conf: &crate::acme::Config) -> crate::acme::ACMEResult<crate::types::account::Account> {
+        let id = self.id.clone();
+        let account_contacts: Vec<AccountContact> = crate::try_db_result!(db.run(move |c| super::schema::account_contacts::dsl::account_contacts.filter(
+            super::schema::account_contacts::dsl::account.eq(&id)
+        ).load(c)).await, "Failed to get account contacts: {}")?;
 
         Ok(crate::types::account::Account {
             status: match self.status {
@@ -72,7 +75,7 @@ impl Account {
                     signature: self.eab_sig.as_deref().unwrap_or_default().to_string(),
                 })
             },
-            orders: format!("{}{}", &conf.external_uri, rocket::uri!(crate::acme::account_orders: crate::util::uuid_as_b64(&self.id)).to_string()),
+            orders: format!("{}{}", &conf.external_uri, rocket::uri!(crate::acme::account_orders(crate::util::uuid_as_b64(&self.id))).to_string()),
         })
     }
 }
@@ -136,18 +139,20 @@ pub struct Order {
 
 impl Order {
     pub fn url(&self) -> String {
-        rocket::uri!(crate::acme::order: crate::util::uuid_as_b64(&self.id)).to_string()
+        rocket::uri!(crate::acme::order(crate::util::uuid_as_b64(&self.id))).to_string()
     }
 
-    pub(crate) fn to_json(
+    pub(crate) async fn to_json(
         &self, db: &crate::DBConn, ca_obj: crate::cert_order::Order, conf: &crate::acme::Config,
     ) -> crate::acme::ACMEResult<crate::types::order::Order> {
-        let authorizations = ca_obj.authorizations.into_iter().map(|a| {
-            let a = match crate::try_db_result!(super::schema::authorizations::dsl::authorizations.filter(
-                super::schema::authorizations::dsl::ca_id.eq(&a).and(
-                    super::schema::authorizations::dsl::account.eq(&self.account)
+        let acct = self.account;
+        let authorizations = futures::stream::iter(ca_obj.authorizations.into_iter()).then(|a| async move {
+            let a1 = a.clone();
+            let a = match crate::try_db_result!(db.run(move |c| super::schema::authorizations::dsl::authorizations.filter(
+                super::schema::authorizations::dsl::ca_id.eq(&a1).and(
+                    super::schema::authorizations::dsl::account.eq(&acct)
                 )
-            ).first::<super::models::Authorization>(&db.0).optional(), "Failed to look for existing authorization: {}")? {
+            ).first::<super::models::Authorization>(c).optional()).await, "Failed to look for existing authorization: {}")? {
                 Some(a) => a,
                 None => {
                     let a = Authorization {
@@ -155,33 +160,37 @@ impl Order {
                         account: self.account.clone(),
                         ca_id: a,
                     };
-                    crate::try_db_result!(diesel::insert_into(super::schema::authorizations::dsl::authorizations)
+                    let a = crate::try_db_result!(db.run(move |c| diesel::insert_into(super::schema::authorizations::dsl::authorizations)
                         .values(&a)
-                        .execute(&db.0), "Failed to insert authorization: {}")?;
+                        .get_result(c)).await, "Failed to insert authorization: {}")?;
                     a
                 }
             };
 
             Ok(format!("{}{}", conf.external_uri, a.url()))
-        }).collect::<Result<Vec<_>, _>>()?;
+        }).collect::<Vec<_>>().await.into_iter().collect::<Result<Vec<_>, _>>()?;
 
-        let cert = ca_obj.certificate_id.map(|i| {
-            Ok(match crate::try_db_result!(super::schema::certificates::dsl::certificates.filter(
-                super::schema::certificates::dsl::ca_id.eq(&i)
-            ).first::<super::models::Certificate>(&db.0).optional(), "Failed to look for existing certificate: {}")? {
-                Some(c) => c,
-                None => {
-                    let c = Certificate {
-                        id: uuid::Uuid::new_v4(),
-                        ca_id: i,
-                    };
-                    crate::try_db_result!(diesel::insert_into(super::schema::certificates::dsl::certificates)
+        let cert = match ca_obj.certificate_id {
+            Some(i) => {
+                let i1 = i.clone();
+                Some(match crate::try_db_result!(db.run(move |c| super::schema::certificates::dsl::certificates.filter(
+                    super::schema::certificates::dsl::ca_id.eq(&i1)
+                ).first::<super::models::Certificate>(c).optional()).await, "Failed to look for existing certificate: {}")? {
+                    Some(c) => c,
+                    None => {
+                        let c = Certificate {
+                            id: uuid::Uuid::new_v4(),
+                            ca_id: i,
+                        };
+                        let c = crate::try_db_result!(db.run(move |o| diesel::insert_into(super::schema::certificates::dsl::certificates)
                         .values(&c)
-                        .execute(&db.0), "Failed to insert certificate: {}")?;
-                    c
-                }
-            })
-        }).transpose()?;
+                        .get_result(o)).await, "Failed to insert certificate: {}")?;
+                        c
+                    }
+                })
+            },
+            None => None,
+        };
 
         Ok(crate::types::order::Order {
             status: match crate::cert_order::OrderStatus::from_i32(ca_obj.status) {
@@ -198,7 +207,7 @@ impl Order {
             not_after: crate::util::proto_to_chrono(ca_obj.not_after),
             error: None,
             authorizations,
-            finalize: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::order_finalize: crate::util::uuid_as_b64(&self.id)).to_string()),
+            finalize: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::order_finalize(crate::util::uuid_as_b64(&self.id))).to_string()),
             certificate: cert.map(|c| format!("{}{}", conf.external_uri, c.url())),
         })
     }
@@ -214,7 +223,7 @@ pub struct Authorization {
 
 impl Authorization {
     pub fn url(&self) -> String {
-        rocket::uri!(crate::acme::authorization: crate::util::uuid_as_b64(&self.id)).to_string()
+        rocket::uri!(crate::acme::authorization(crate::util::uuid_as_b64(&self.id))).to_string()
     }
 
     pub(crate) fn to_json(
@@ -249,10 +258,10 @@ impl Authorization {
                 Some(crate::cert_order::ChallengeType::ChallengeTlsalpn01) => crate::types::challenge::Type::TLSALPN01,
                 None => return Err(crate::internal_server_error!())
             },
-            url: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::challenge:
+            url: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::challenge(
                 crate::util::uuid_as_b64(&self.id),
-                base64::encode_config(ca_obj.id, base64::URL_SAFE_NO_PAD)
-            ).to_string()),
+                BASE64_URL_SAFE_NO_PAD.encode(ca_obj.id)
+            )).to_string()),
             status: match crate::cert_order::ChallengeStatus::from_i32(ca_obj.status) {
                 Some(crate::cert_order::ChallengeStatus::ChallengePending) => crate::types::challenge::Status::Pending,
                 Some(crate::cert_order::ChallengeStatus::ChallengeProcessing) => crate::types::challenge::Status::Processing,
@@ -279,7 +288,7 @@ pub struct Certificate {
 
 impl Certificate {
     pub fn url(&self) -> String {
-        rocket::uri!(crate::acme::certificate: cid = crate::util::uuid_as_b64(&self.id), idx = _, cidx = _).to_string()
+        rocket::uri!(crate::acme::certificate(cid = crate::util::uuid_as_b64(&self.id), idx = _, cidx = _)).to_string()
     }
 }
 

@@ -1,33 +1,35 @@
-#![allow(incomplete_features)]
-#![feature(decl_macro)]
-#![feature(unsized_locals)]
-
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde;
 
 use std::net::ToSocketAddrs;
+
+#[derive(Deserialize)]
+struct ValidatorConfig {
+    caa_identities: Vec<String>,
+    tor_storage: Option<std::path::PathBuf>
+}
 
 fn main() {
     pretty_env_logger::init();
 
-    let config = rocket::config::RocketConfig::read()
-        .expect("Unable to read config").active().clone();
+    let fig = rocket::config::Config::figment();
+    let config = fig.extract::<rocket::config::Config>().expect("Unable to load config");
 
     let rt = tokio::runtime::Runtime::new().expect("failed to obtain a new Runtime object");
 
-    let caa_identities = match config.get_slice("caa_identities") {
-        Ok(v) => v.iter().map(|i| match i.as_str() {
-            Some(i) => i.to_string(),
-            None => panic!("Unable to load CAA identities from config: array value not a string"),
-        }).collect::<Vec<_>>(),
-        Err(e) => {
-            panic!("Unable to load CAA identities from config: {}", e);
-        }
-    };
+    let conf = fig.extract::<ValidatorConfig>().expect("Unable to load validator config");
     let serve_addr = (config.address, config.port).to_socket_addrs()
         .expect("Invalid listen address").next().unwrap();
 
-    let validator = bjorn::validator::Validator::new(caa_identities);
+    let validator = rt.block_on(match conf.tor_storage {
+        Some(s) => {
+            let s =  rt.block_on(torrosion::storage::FileStorage::new(s)).expect("Unable to initialize Tor storage");
+            bjorn::validator::Validator::new(conf.caa_identities, Some(s))
+        },
+        None => bjorn::validator::Validator::new(conf.caa_identities, None)
+    });
 
     let server_future = tonic::transport::Server::builder()
                         .add_service(bjorn::cert_order::validator_server::ValidatorServer::new(validator))

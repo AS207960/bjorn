@@ -142,7 +142,7 @@ pub fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssu
                     },
                 }),
                 Some(crate::cert_order::CertStatus::CertUnissued) => super::types::CertStatus::Revoked(super::types::RevokedInfo {
-                    revocation_time: Utc.timestamp(0, 0),
+                    revocation_time: Utc.timestamp_opt(0, 0).unwrap(),
                     revocation_reason: Some(super::types::RevocationReason::CertificateHold),
                 }),
                 None => super::types::CertStatus::Unknown,

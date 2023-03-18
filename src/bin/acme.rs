@@ -5,25 +5,26 @@
 #[macro_use]
 extern crate rocket;
 
-fn main() {
+#[launch]
+fn rocket() -> _ {
     pretty_env_logger::init();
 
-    rocket::ignite()
+    rocket::build()
         .attach(bjorn::acme::ConfigFairing())
         .attach(bjorn::DBConn::fairing())
         .attach(bjorn::acme::DBMigrationFairing())
-        .attach(rocket_contrib::templates::Template::fairing())
-        .attach(rocket::fairing::AdHoc::on_attach("gRPC Config", |rocket| {
-            let dst = rocket.config()
-                .get_string("ca_grpc_uri")
+        .attach( rocket_dyn_templates::Template::fairing())
+        .attach(rocket::fairing::AdHoc::try_on_ignite("gRPC Config", |rocket| async move {
+            let dst = rocket.figment()
+                .extract_inner::<String>("ca_grpc_uri")
                 .expect("'ca_grpc_uri' not configured");
 
-            let order_client = bjorn::acme::processing::BlockingOrderClient::connect(dst)
+            let order_client = bjorn::acme::processing::OrderClient::connect(dst).await
                 .expect("Unable to connect to upstream CA");
 
             Ok(rocket.manage(order_client))
         }))
-        .register(catchers![
+        .register("/", catchers![
             bjorn::acme::acme_401,
             bjorn::acme::acme_404,
             bjorn::acme::acme_405,
@@ -64,5 +65,4 @@ fn main() {
             bjorn::acme::revoke,
             bjorn::acme::revoke_post,
         ])
-        .launch();
 }

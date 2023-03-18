@@ -3,16 +3,16 @@ use foreign_types::{ForeignTypeRef, ForeignType};
 
 pub struct OCSPIssuer {
     pub(crate) issuer: openssl::x509::X509,
-    pub(crate) signer: openssl::pkcs12::ParsedPkcs12,
+    pub(crate) signer: openssl::pkcs12::ParsedPkcs12_2,
     pub(crate) grpc_client: super::processing::BlockingOCSPClient,
     pub(crate) cert_id: String,
     pub(crate) pub_key_sha1: Vec<u8>,
 }
 
 impl OCSPIssuer {
-    pub fn new(issuer: openssl::x509::X509, signer: openssl::pkcs12::ParsedPkcs12, grpc_client: super::processing::BlockingOCSPClient, cert_id: String) -> OCSPIssuer {
+    pub fn new(issuer: openssl::x509::X509, signer: openssl::pkcs12::ParsedPkcs12_2, grpc_client: super::processing::BlockingOCSPClient, cert_id: String) -> OCSPIssuer {
         let issuer_key = unsafe {
-            let issuer_key_string = super::proto::X509_get0_pubkey_bitstr( signer.cert.as_ptr());
+            let issuer_key_string = super::proto::X509_get0_pubkey_bitstr( signer.cert.as_ref().expect("No signer cert").as_ptr());
             std::slice::from_raw_parts(
                 openssl_sys::ASN1_STRING_get0_data(issuer_key_string.cast()),
                 openssl_sys::ASN1_STRING_length(issuer_key_string.cast()) as usize,
@@ -32,7 +32,7 @@ impl OCSPIssuer {
     }
 }
 
-pub(crate) struct Pkcs12Debug<'a>(pub(crate) &'a openssl::pkcs12::ParsedPkcs12);
+pub(crate) struct Pkcs12Debug<'a>(pub(crate) &'a openssl::pkcs12::ParsedPkcs12_2);
 
 impl std::fmt::Debug for Pkcs12Debug<'_> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

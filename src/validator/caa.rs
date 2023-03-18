@@ -6,38 +6,100 @@ pub enum CAAError {
 
 pub type CAAResult<T> = Result<T, CAAError>;
 
-pub async fn find_caa_record(validator: &super::Validator, identifier: &super::Identifier) -> CAAResult<Vec<trust_dns_proto::rr::rdata::CAA>> {
+pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
+    validator: &super::Validator<S>, domain: &str, hs_priv_key: Option<&[u8; 32]>
+) -> CAAResult<Vec<trust_dns_proto::rr::rdata::CAA>> {
+    let client = match validator.tor_client {
+        Some(ref c) => c,
+        None => return Err(CAAError::ServFail)
+    };
+
+    let hs_address = match torrosion::hs::HSAddress::from_str(domain) {
+        Ok(hs) => hs,
+        Err(_) => return Err(CAAError::ServFail)
+    };
+
+    let (
+        descriptor, first_layer, blinded_key, hs_subcred
+    ) = match hs_address.fetch_ds_first_layer(&client).await {
+        Ok(v) => v,
+        Err(_) => return Err(CAAError::ServFail)
+    };
+
+    let is_caa_critical = first_layer.caa_critical;
+
+    let second_layer = match torrosion::hs::HSAddress::get_ds_second_layer(
+        descriptor, first_layer, hs_priv_key.copied(), &blinded_key, &hs_subcred
+    ).await {
+        Ok(v) => v,
+        Err(_) => if is_caa_critical {
+            return Err(CAAError::UnsupportedCritical);
+        } else {
+            return Ok(Vec::new());
+        }
+    };
+
+    Ok(second_layer.caa.into_iter().map(|caa| {
+        let tag = trust_dns_proto::rr::rdata::caa::Property::from(caa.tag);
+
+        let value =  match &tag {
+            trust_dns_proto::rr::rdata::caa::Property::Issue | trust_dns_proto::rr::rdata::caa::Property::IssueWild => {
+                let value = trust_dns_proto::rr::rdata::caa::read_issuer(caa.value.as_bytes())
+                    .map_err(|_| CAAError::ServFail)?;
+                trust_dns_proto::rr::rdata::caa::Value::Issuer(value.0, value.1)
+            }
+            trust_dns_proto::rr::rdata::caa::Property::Iodef => {
+                let url = trust_dns_proto::rr::rdata::caa::read_iodef(caa.value.as_bytes())
+                    .map_err(|_| CAAError::ServFail)?;
+                trust_dns_proto::rr::rdata::caa::Value::Url(url)
+            }
+            trust_dns_proto::rr::rdata::caa::Property::Unknown(_) => trust_dns_proto::rr::rdata::caa::Value::Unknown(
+                caa.value.into_bytes()
+            ),
+        };
+
+        Ok(trust_dns_proto::rr::rdata::CAA {
+            issuer_critical: caa.flags & 0b1000_0000 != 0,
+            tag,
+            value,
+        })
+    }).collect::<Result<Vec<_>, _>>()?)
+}
+
+pub async fn find_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
+    validator: &super::Validator<S>, identifier: &super::Identifier, hs_priv_key: Option<&[u8; 32]>
+) -> CAAResult<Vec<trust_dns_proto::rr::rdata::CAA>> {
     match identifier {
         super::Identifier::Domain(domain, _) => {
-            let mut domain = domain.trim_end_matches('.').split(".").collect::<Vec<_>>();
-            while !domain.is_empty() {
-                let search_domain = format!("{}.", domain.join("."));
-                let result = match validator.dns_resolver.lookup(
-                    search_domain, trust_dns_proto::rr::record_type::RecordType::CAA,
-                    trust_dns_proto::xfer::dns_request::DnsRequestOptions {
-                        expects_multiple_responses: false,
-                        use_edns: true,
-                    },
-                ).await {
-                    Ok(r) => Some(
-                        r.iter()
-                            .filter_map(|r| match r {
-                                trust_dns_proto::rr::record_data::RData::CAA(d) => Some(d),
-                                _ => None
-                            })
-                            .map(|r| r.to_owned())
-                            .collect()
-                    ),
-                    Err(err) => match err.kind() {
-                        trust_dns_resolver::error::ResolveErrorKind::NoRecordsFound { .. } => None,
-                        _ => return Err(CAAError::ServFail)
-                    }
-                };
+            if domain.ends_with(".onion") {
+                return find_hs_caa_record(validator, domain, hs_priv_key).await;
+            } else {
+                let mut domain = domain.trim_end_matches('.').split(".").collect::<Vec<_>>();
+                while !domain.is_empty() {
+                    let search_domain = format!("{}.", domain.join("."));
+                    let result = match validator.dns_resolver.lookup(
+                        search_domain, trust_dns_proto::rr::record_type::RecordType::CAA,
+                    ).await {
+                        Ok(r) => Some(
+                            r.iter()
+                                .filter_map(|r| match r {
+                                    trust_dns_proto::rr::record_data::RData::CAA(d) => Some(d),
+                                    _ => None
+                                })
+                                .map(|r| r.to_owned())
+                                .collect()
+                        ),
+                        Err(err) => match err.kind() {
+                            trust_dns_resolver::error::ResolveErrorKind::NoRecordsFound { .. } => None,
+                            _ => return Err(CAAError::ServFail)
+                        }
+                    };
 
-                if let Some(res) = result {
-                    return Ok(res);
-                } else {
-                    domain.remove(0);
+                    if let Some(res) = result {
+                        return Ok(res);
+                    } else {
+                        domain.remove(0);
+                    }
                 }
             }
         }
@@ -45,10 +107,6 @@ pub async fn find_caa_record(validator: &super::Validator, identifier: &super::I
             let ip_addr_domain = trust_dns_resolver::Name::from(ip_addr.to_owned());
             return match validator.dns_resolver.lookup(
                 ip_addr_domain, trust_dns_proto::rr::record_type::RecordType::CAA,
-                trust_dns_proto::xfer::dns_request::DnsRequestOptions {
-                    expects_multiple_responses: false,
-                    use_edns: true,
-                },
             ).await {
                 Ok(r) => Ok(
                     r.iter()
@@ -213,9 +271,9 @@ fn parse_caa_policy(rdata: &[trust_dns_proto::rr::rdata::CAA]) -> CAAResult<CAAP
     Ok(policy)
 }
 
-pub async fn verify_caa_record(
-    validator: &super::Validator, identifier: &super::Identifier, validation_method: &str,
-    account_uri: Option<&str>
+pub async fn verify_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
+    validator: &super::Validator<S>, identifier: &super::Identifier, validation_method: &str,
+    account_uri: Option<&str>, hs_priv_key: Option<&[u8; 32]>
 ) -> CAAResult<bool> {
     let is_wild = match identifier {
         super::Identifier::Domain(_, is_wild) => *is_wild,
@@ -226,7 +284,7 @@ pub async fn verify_caa_record(
         return Ok(true);
     }
 
-    let records = find_caa_record(validator, identifier).await?;
+    let records = find_caa_record(validator, identifier, hs_priv_key).await?;
     let policy = parse_caa_policy(&records)?;
 
     if !is_wild {

@@ -1,5 +1,6 @@
 use diesel::prelude::*;
 use chrono::prelude::*;
+use base64::prelude::*;
 use std::convert::TryInto;
 use crate::{types, DBConn};
 
@@ -81,18 +82,18 @@ fn try_tonic_result<T>(src: Result<T, tonic::Status>) -> ACMEResult<T> {
 }
 
 macro_rules! try_result {
-    ($src:expr) => {
+    ($src:expr, $db:expr, $conf:expr) => {
         (match ($src) {
             Ok(inner) => inner,
             Err(err) => {
-                return responses::ACMEResponse::new_error(err);
+                return responses::ACMEResponse::new_error(err, &$db, &$conf).await;
             }
         })
     }
 }
 
 macro_rules! ensure_request_key_kid {
-    ($src:expr) => {
+    ($src:expr, $db:expr, $conf:expr) => {
         match $src {
             jws::JWSRequestKey::KID(k) => k,
             jws::JWSRequestKey::JWK { kid: _, key: _ } => {
@@ -104,14 +105,14 @@ macro_rules! ensure_request_key_kid {
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &$db, &$conf).await;
             }
         }
     }
 }
 
 macro_rules! ensure_request_key_jwk {
-    ($src:expr) => {
+    ($src:expr, $db:expr, $conf:expr) => {
         match $src {
             jws::JWSRequestKey::KID(_) => {
                 return responses::ACMEResponse::new_error(types::error::Error {
@@ -122,7 +123,7 @@ macro_rules! ensure_request_key_jwk {
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &$db, &$conf).await;
             }
             jws::JWSRequestKey::JWK { kid: _, key } => key
         }
@@ -139,14 +140,14 @@ macro_rules! ensure_tos_agreed {
                     expires_at: Utc::now() + chrono::Duration::days(1)
                 };
 
-                try_result!(try_db_result!(
+                let tos_agreemet_token: models::ToSAgreementToken = try_result!(try_db_result!($db.run(move |c|
                     diesel::insert_into(schema::tos_agreement_tokens::dsl::tos_agreement_tokens)
-                        .values(&tos_agreemet_token).execute(&$db.0),
+                        .values(&tos_agreemet_token).get_result(c)).await,
                     "Unable to save ToS agreement token to database: {}"
-                ));
+                ), $db, $conf);
 
                 return responses::ACMEResponse::new(responses::InnerACMEResponse::Error(
-                    rocket_contrib::json::Json(types::error::Error {
+                    rocket::serde::json::Json(types::error::Error {
                         error_type: types::error::Type::UserActionRequired,
                         status: 403,
                         title: "User action required".to_string(),
@@ -155,10 +156,9 @@ macro_rules! ensure_tos_agreed {
                         instance: Some(format!(
                             "{}{}",
                             $conf.external_uri,
-                            rocket::uri!(
-                                crate::acme::tos_agree:
+                            rocket::uri!(crate::acme::tos_agree(
                                 tid = crate::util::uuid_as_b64(&tos_agreemet_token.id)
-                            ).to_string()
+                            )).to_string()
                         )),
                         identifier: None,
                     })
@@ -166,14 +166,14 @@ macro_rules! ensure_tos_agreed {
                     url: $conf.tos_uri.as_deref().unwrap_or_default().to_string(),
                     relative: false,
                     relation: "terms-of-service".to_string()
-                }]);
+                }], &$db, &$conf).await;
             }
         }
     }
 }
 
 macro_rules! ensure_not_post_as_get {
-    ($src:expr) => {
+    ($src:expr, $db:expr, $conf:expr) => {
         match $src {
             Some(v) => v,
             None => {
@@ -185,14 +185,14 @@ macro_rules! ensure_not_post_as_get {
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &$db, &$conf).await;
             }
         }
     }
 }
 
 macro_rules! ensure_post_as_get {
-    ($src:expr) => {
+    ($src:expr, $db:expr, $conf:expr) => {
         match $src {
             None => {},
             Some(_) => {
@@ -204,7 +204,7 @@ macro_rules! ensure_post_as_get {
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &$db, &$conf).await;
             }
         }
     }
@@ -241,7 +241,7 @@ pub struct Account {
     key: openssl::pkey::PKey<openssl::pkey::Public>,
 }
 
-fn lookup_account(kid: &str, db: &DBConn) -> ACMEResult<Option<Account>> {
+async fn lookup_account(kid: &str, db: &DBConn) -> ACMEResult<Option<Account>> {
     let kid_url = match url::Url::parse(kid) {
         Ok(v) => v,
         Err(err) => {
@@ -273,9 +273,11 @@ fn lookup_account(kid: &str, db: &DBConn) -> ACMEResult<Option<Account>> {
     };
     let kid_uuid = decode_id!(kid_str)?;
 
-    let existing_account: Option<models::Account> = try_db_result!(schema::accounts::dsl::accounts.filter(
-        schema::accounts::dsl::id.eq(&kid_uuid)
-    ).first::<models::Account>(&db.0).optional(), "Unable to search for existing contact: {}")?;
+    let existing_account: Option<models::Account> = try_db_result!(db.run(move |c| {
+        schema::accounts::dsl::accounts.filter(
+            schema::accounts::dsl::id.eq(&kid_uuid)
+        ).first::<models::Account>(c).optional()
+    }).await, "Unable to search for existing contact: {}")?;
 
     let existing_account = match existing_account {
         Some(v) => v,
@@ -343,26 +345,27 @@ pub struct ACMEIssuer {
     pub(crate) cert_id: String,
 }
 
+#[rocket::async_trait]
 impl rocket::fairing::Fairing for ConfigFairing {
     fn info(&self) -> rocket::fairing::Info {
         rocket::fairing::Info {
             name: "Bj\u{f6}rn config loader",
-            kind: rocket::fairing::Kind::Attach,
+            kind: rocket::fairing::Kind::Ignite,
         }
     }
 
-    fn on_attach(&self, rocket: rocket::Rocket) -> Result<rocket::Rocket, rocket::Rocket> {
-        let external_uri = match rocket.config().get_string("external_uri") {
+    async fn on_ignite(&self, rocket: rocket::Rocket<rocket::Build>) -> rocket::fairing::Result {
+        let external_uri = match rocket.figment().extract_inner::<String>("external_uri") {
             Ok(v) => v,
             Err(e) => {
                 error!("Unable to load external URI from config: {}", e);
                 return Err(rocket);
             }
         };
-        let external_account_required = match rocket.config().get_bool("external_account_required") {
+        let external_account_required = match rocket.figment().extract_inner::<bool>("external_account_required") {
             Ok(v) => v,
             Err(e) => {
-                if let rocket::config::ConfigError::Missing(_) = e {
+                if let figment::error::Kind::MissingField(_) = e.kind {
                     false
                 } else {
                     error!("Unable to load external account required from config: {}", e);
@@ -370,19 +373,10 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
         };
-        let caa_identities = match rocket.config().get_slice("caa_identities") {
-            Ok(v) => match v.iter().map(|i| match i.as_str() {
-                Some(i) => Ok(i.to_string()),
-                None => {
-                    error!("Unable to load CAA identities from config: array value not a string");
-                    return Err(());
-                }
-            }).collect::<Result<Vec<_>, _>>() {
-                Ok(v) => v,
-                Err(_) => return Err(rocket)
-            },
+        let caa_identities = match rocket.figment().extract_inner::<Vec<String>>("caa_identities") {
+            Ok(v) => v,
             Err(e) => {
-                if let rocket::config::ConfigError::Missing(_) = e {
+                if let figment::error::Kind::MissingField(_) = e.kind {
                     vec![]
                 } else {
                     error!("Unable to load CAA identities from config: {}", e);
@@ -390,10 +384,10 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
         };
-        let tos_uri = match rocket.config().get_string("tos_uri") {
+        let tos_uri = match rocket.figment().extract_inner::<String>("tos_uri") {
             Ok(v) => Some(v),
             Err(e) => {
-                if let rocket::config::ConfigError::Missing(_) = e {
+                if let figment::error::Kind::MissingField(_) = e.kind {
                     None
                 } else {
                     error!("Unable to load ToS URI from config: {}", e);
@@ -401,7 +395,7 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
         };
-        let tos_agreed_to_after = match rocket.config().get_string("tos_agreed_to_after") {
+        let tos_agreed_to_after = match rocket.figment().extract_inner::<String>("tos_agreed_to_after") {
             Ok(v) => match v.parse::<DateTime<Utc>>() {
                 Ok(v) => Some(v),
                 Err(e) => {
@@ -410,7 +404,7 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
             Err(e) => {
-                if let rocket::config::ConfigError::Missing(_) = e {
+                if let figment::error::Kind::MissingField(_) = e.kind {
                     None
                 } else {
                     error!("Unable to load ToS agreed to after date from config: {}", e);
@@ -418,10 +412,10 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 }
             }
         };
-        let website_uri = match rocket.config().get_string("website_uri") {
+        let website_uri = match rocket.figment().extract_inner::<String>("website_uri") {
             Ok(v) => Some(v),
             Err(e) => {
-                if let rocket::config::ConfigError::Missing(_) = e {
+                if let figment::error::Kind::MissingField(_) = e.kind {
                     None
                 } else {
                     error!("Unable to load website URI from config: {}", e);
@@ -430,13 +424,11 @@ impl rocket::fairing::Fairing for ConfigFairing {
             }
         };
 
-        let issuers_conf = rocket.config()
-            .get_slice("acme_issuers")
+        let issuers_conf: Vec<ACMEIssuerConfig> = rocket.figment().extract_inner("acme_issuers")
             .expect("'acme_issuers' not configured");
 
-        let issuers = issuers_conf.iter()
-            .map(|i| {
-                let issuer = i.to_owned().try_into::<ACMEIssuerConfig>().expect("Invalid ACME issuer");
+        let issuers = issuers_conf.into_iter()
+            .map(|issuer| {
                 let issuer_cert = openssl::x509::X509::from_pem(
                     &std::fs::read(issuer.issuer_cert_file).expect("Unable to read issuer certificate")
                 ).expect("Unable to parse issuer certificate");
@@ -462,20 +454,21 @@ impl rocket::fairing::Fairing for ConfigFairing {
     }
 }
 
-embed_migrations!("migrations/acme");
+embed_migrations!("./migrations/acme");
 
 pub struct DBMigrationFairing();
 
+#[rocket::async_trait]
 impl rocket::fairing::Fairing for DBMigrationFairing {
     fn info(&self) -> rocket::fairing::Info {
         rocket::fairing::Info {
             name: "DB Migration runner",
-            kind: rocket::fairing::Kind::Attach,
+            kind: rocket::fairing::Kind::Ignite,
         }
     }
 
-    fn on_attach(&self, rocket: rocket::Rocket) -> Result<rocket::Rocket, rocket::Rocket> {
-        let db_conn = match DBConn::get_one(&rocket) {
+    async fn on_ignite(&self, rocket: rocket::Rocket<rocket::Build>) -> rocket::fairing::Result {
+        let db_con = match DBConn::get_one(&rocket).await {
             Some(v) => v.0,
             None => {
                 error!("Unable to get DB connection handle");
@@ -483,7 +476,10 @@ impl rocket::fairing::Fairing for DBMigrationFairing {
             }
         };
 
-        if let Err(e) = embedded_migrations::run(&db_conn) {
+
+        if let Err(e) = db_con.run(|c| {
+            embedded_migrations::run_with_output(c, &mut std::io::stdout())
+        }).await {
             error!("Unable to run migrations: {}", e);
             return Err(rocket);
         }
@@ -498,10 +494,11 @@ pub struct ClientData {
     accept: Option<rocket::http::Accept>,
 }
 
-impl<'a, 'r> rocket::request::FromRequest<'a, 'r> for ClientData {
+#[rocket::async_trait]
+impl<'a> rocket::request::FromRequest<'a> for ClientData {
     type Error = types::error::Error;
 
-    fn from_request(request: &'a rocket::request::Request<'r>) -> rocket::request::Outcome<Self, Self::Error> {
+    async fn from_request(request: &'a rocket::request::Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         match request.headers().get_one("User-Agent") {
             Some(ua) => {
                 let langs = match request.headers().get_one("Accept-Language") {
@@ -537,8 +534,8 @@ impl<'a, 'r> rocket::request::FromRequest<'a, 'r> for ClientData {
 }
 
 #[get("/")]
-pub fn index() -> rocket_contrib::templates::Template {
-    rocket_contrib::templates::Template::render("index", std::collections::HashMap::<(), ()>::new())
+pub fn index() ->  rocket_dyn_templates::Template {
+    rocket_dyn_templates::Template::render("index", std::collections::HashMap::<(), ()>::new())
 }
 
 #[derive(Serialize)]
@@ -547,14 +544,16 @@ struct ToSAgreeTemplateData {
     tos_agreed_at: DateTime<Utc>,
 }
 
-fn get_tos_agreement_token(tid: &str, db: &DBConn) -> Result<(models::ToSAgreementToken, models::Account), types::error::Error> {
+async fn get_tos_agreement_token(tid: &str, db: &DBConn) -> Result<(models::ToSAgreementToken, models::Account), types::error::Error> {
     let tid_uuid = match decode_id!(&tid) {
         Ok(v) => v,
         Err(e) => return Err(e)
     };
-    let tos_agreement_token: models::ToSAgreementToken = match match try_db_result!(schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
-        schema::tos_agreement_tokens::dsl::id.eq(&tid_uuid)
-    ).first::<models::ToSAgreementToken>(&db.0).optional(), "Unable to search for ToS agreement token: {}") {
+    let tos_agreement_token: models::ToSAgreementToken = match match try_db_result!(db.run(move |c| {
+        schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
+            schema::tos_agreement_tokens::dsl::id.eq(&tid_uuid)
+        ).first::<models::ToSAgreementToken>(c).optional()
+    }).await, "Unable to search for ToS agreement token: {}") {
         Ok(v) => v,
         Err(e) => return Err(e)
     } {
@@ -582,9 +581,11 @@ fn get_tos_agreement_token(tid: &str, db: &DBConn) -> Result<(models::ToSAgreeme
         });
     }
 
-    let account: models::Account = match try_db_result!(schema::accounts::dsl::accounts.filter(
-        schema::accounts::dsl::id.eq(&tos_agreement_token.account)
-    ).first::<models::Account>(&db.0),  "Unable to search for account: {}") {
+    let acct_id = tos_agreement_token.account;
+    let account: models::Account = match try_db_result!(db.run(move |c| {schema::accounts::dsl::accounts.filter(
+            schema::accounts::dsl::id.eq(&acct_id)
+        ).first::<models::Account>(c)
+    }).await,  "Unable to search for account: {}") {
         Ok(v) => v,
         Err(e) => return Err(e)
     };
@@ -593,14 +594,14 @@ fn get_tos_agreement_token(tid: &str, db: &DBConn) -> Result<(models::ToSAgreeme
 }
 
 #[get("/tos_agreement/<tid>")]
-pub fn tos_agree(tid: String, conf: rocket::State<Config>, db: DBConn) -> responses::InnerACMEResponse<'static, rocket_contrib::templates::Template> {
-    let (_, account) = match get_tos_agreement_token(&tid, &db) {
+pub async fn tos_agree(tid: String, conf: &rocket::State<Config>, db: DBConn) -> responses::InnerACMEResponse<'static, 'static, rocket_dyn_templates::Template> {
+    let (_, account) = match get_tos_agreement_token(&tid, &db).await {
         Ok(v) => v,
-        Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+        Err(e) => return responses::InnerACMEResponse::Error(rocket::serde::json::Json(e))
     };
 
     responses::InnerACMEResponse::Ok(
-        (rocket_contrib::templates::Template::render("tos_agree", ToSAgreeTemplateData {
+        ( rocket_dyn_templates::Template::render("tos_agree", ToSAgreeTemplateData {
             tos_uri: conf.tos_uri.as_deref().unwrap_or_default().to_string(),
             tos_agreed_at: account.tos_agreed_at,
         }), rocket::http::Status::Ok)
@@ -613,39 +614,43 @@ pub struct ToSAgree {
 }
 
 #[post("/tos_agreement/<tid>", data = "<tos_agree>")]
-pub fn tos_agree_post(
-    tid: String, conf: rocket::State<Config>, db: DBConn,
-    tos_agree: rocket::request::Form<ToSAgree>,
-) -> responses::InnerACMEResponse<'static, rocket_contrib::templates::Template> {
-    let (tos_agreement_token, account) = match get_tos_agreement_token(&tid, &db) {
+pub async fn tos_agree_post(
+    tid: String, conf: &rocket::State<Config>, db: DBConn,
+    tos_agree: rocket::form::Form<ToSAgree>,
+) -> responses::InnerACMEResponse<'static, 'static, rocket_dyn_templates::Template> {
+    let (tos_agreement_token, account) = match get_tos_agreement_token(&tid, &db).await {
         Ok(v) => v,
-        Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+        Err(e) => return responses::InnerACMEResponse::Error(rocket::serde::json::Json(e))
     };
 
     if !tos_agree.agree {
         responses::InnerACMEResponse::Ok(
-            (rocket_contrib::templates::Template::render("tos_agree", ToSAgreeTemplateData {
+            ( rocket_dyn_templates::Template::render("tos_agree", ToSAgreeTemplateData {
                 tos_uri: conf.tos_uri.as_deref().unwrap_or_default().to_string(),
                 tos_agreed_at: account.tos_agreed_at,
             }), rocket::http::Status::Ok)
         )
     } else {
-        match try_db_result!(diesel::update(schema::accounts::dsl::accounts.filter(schema::accounts::dsl::id.eq(&account.id)))
-            .set(schema::accounts::dsl::tos_agreed_at.eq(Utc::now()))
-            .execute(&db.0), "Unable to update account: {}") {
+        match try_db_result!(db.run(move |c| {
+            diesel::update(schema::accounts::dsl::accounts.filter(schema::accounts::dsl::id.eq(&account.id)))
+                .set(schema::accounts::dsl::tos_agreed_at.eq(Utc::now()))
+                .execute(c)
+        }).await, "Unable to update account: {}") {
             Ok(_) => {}
-            Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+            Err(e) => return responses::InnerACMEResponse::Error(rocket::serde::json::Json(e))
         };
-        match try_db_result!(diesel::delete(schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
-            schema::tos_agreement_tokens::dsl::id.eq(&tos_agreement_token.id)
-        )).execute(&db.0), "Unable to delete ToS agreement token: {}") {
+        match try_db_result!(db.run(move |c| {
+            diesel::delete(schema::tos_agreement_tokens::dsl::tos_agreement_tokens.filter(
+                schema::tos_agreement_tokens::dsl::id.eq(&tos_agreement_token.id)
+            )).execute(c)
+        }).await, "Unable to delete ToS agreement token: {}") {
             Ok(_) => {}
-            Err(e) => return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(e))
+            Err(e) => return responses::InnerACMEResponse::Error(rocket::serde::json::Json(e))
         }
 
         responses::InnerACMEResponse::Ok(
             (
-                rocket_contrib::templates::Template::render("tos_agreed", std::collections::HashMap::<(), ()>::new()),
+                rocket_dyn_templates::Template::render("tos_agreed", std::collections::HashMap::<(), ()>::new()),
                 rocket::http::Status::Ok
             )
         )
@@ -653,13 +658,13 @@ pub fn tos_agree_post(
 }
 
 #[get("/directory")]
-pub fn directory(ua: ACMEResult<ClientData>, conf: rocket::State<Config>)
-                 -> responses::InnerACMEResponse<'static, rocket_contrib::json::Json<types::directory::Directory>> {
+pub fn directory(ua: ACMEResult<ClientData>, conf: &rocket::State<Config>)
+                 -> responses::InnerACMEResponse<'static, 'static, rocket::serde::json::Json<types::directory::Directory>> {
     if let Err(err) = ua {
-        return responses::InnerACMEResponse::Error(rocket_contrib::json::Json(err));
+        return responses::InnerACMEResponse::Error(rocket::serde::json::Json(err));
     }
 
-    responses::InnerACMEResponse::Ok((rocket_contrib::json::Json(types::directory::Directory {
+    responses::InnerACMEResponse::Ok((rocket::serde::json::Json(types::directory::Directory {
         new_nonce: format!("{}{}", conf.external_uri, NEW_NONCE_URI),
         new_account: Some(format!("{}{}", conf.external_uri, NEW_ACCOUNT_URI)),
         new_order: Some(format!("{}{}", conf.external_uri, NEW_ORDER_URI)),
@@ -680,15 +685,22 @@ pub fn directory_post() -> rocket::http::Status {
     rocket::http::Status::MethodNotAllowed
 }
 
+pub struct NonceResponse {}
+
+impl<'r> rocket::response::Responder<'r, 'static> for NonceResponse {
+    fn respond_to(self, _req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        Ok(rocket::response::Response::build()
+            .status(rocket::http::Status::Ok)
+            .raw_header("Cache-Control", "no-store")
+            .finalize())
+    }
+}
+
 #[get("/acme/nonce")]
-pub fn get_nonce() -> responses::ACMEResponse<'static, rocket::response::Response<'static>> {
-    let response = rocket::response::Response::build()
-        .status(rocket::http::Status::Ok)
-        .raw_header("Cache-Control", "no-store")
-        .finalize();
+pub async fn get_nonce(db: DBConn, conf: &rocket::State<Config>) -> responses::ACMEResponse<'static, 'static, NonceResponse> {
     responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (response, rocket::http::Status::Ok)
-    ), vec![])
+        (NonceResponse {}, rocket::http::Status::Ok)
+    ), vec![], &db, &conf).await
 }
 
 #[post("/acme/nonce")]
@@ -702,37 +714,38 @@ pub fn new_account() -> rocket::http::Status {
 }
 
 #[post("/acme/new_account", data = "<acct>")]
-pub fn new_account_post(
+pub async fn new_account_post(
     ua: ACMEResult<ClientData>,
     acct: ACMEResult<jws::JWSRequest<types::account::AccountCreate>>,
     db: DBConn,
-    conf: rocket::State<Config>,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, responses::Headers<rocket_contrib::json::Json<types::account::Account>>> {
-    try_result!(ua);
-    let acct = try_result!(acct);
-    let acct_key = ensure_request_key_jwk!(acct.key);
-    let payload = ensure_not_post_as_get!(acct.payload);
+    conf: &rocket::State<Config>,
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, responses::Headers<rocket::serde::json::Json<types::account::Account>>> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(acct, db, conf);
+    let acct_key = ensure_request_key_jwk!(acct.key, db, conf);
+    let payload = ensure_not_post_as_get!(acct.payload, db, conf);
 
     let acct_key_bytes = match acct_key.public_key_to_der() {
         Ok(v) => v,
         Err(_) => {
-            return responses::ACMEResponse::new_error(internal_server_error!());
+            return responses::ACMEResponse::new_error(internal_server_error!(), &db, &conf).await;
         }
     };
 
-    let existing_account: Option<models::Account> = try_result!(try_db_result!(schema::accounts::dsl::accounts.filter(
-        schema::accounts::dsl::public_key.eq(&acct_key_bytes)
-    ).first::<models::Account>(&db.0).optional(), "Unable to search for existing account: {}"));
+    let akb = acct_key_bytes.clone();
+    let existing_account: Option<models::Account> = try_result!(try_db_result!(db.run(move |c| schema::accounts::dsl::accounts.filter(
+        schema::accounts::dsl::public_key.eq(&akb)
+    ).first::<models::Account>(c).optional()).await, "Unable to search for existing account: {}"), db, conf);
 
     if let Some(acct) = existing_account {
-        let acct_obj = try_result!(acct.to_json(&db, &conf));
+        let acct_obj = try_result!(acct.to_json(&db, &conf).await, db, conf);
         return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
             (responses::Headers {
-                responder: rocket_contrib::json::Json(acct_obj),
+                responder: rocket::serde::json::Json(acct_obj),
                 headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, acct.kid()))],
             }, rocket::http::Status::Ok)
-        ), vec![]);
+        ), vec![], &db, &conf).await;
     }
 
     if payload.only_return_existing {
@@ -744,7 +757,7 @@ pub fn new_account_post(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        });
+        }, &db, &conf).await;
     }
 
     if !payload.terms_of_service_agreed {
@@ -756,13 +769,13 @@ pub fn new_account_post(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        });
+        }, &db, &conf).await;
     }
 
     let account_id = uuid::Uuid::new_v4();
     let contacts = try_result!(models::parse_contacts(
         &payload.contact.iter().map(|c| c.as_ref()).collect::<Vec<_>>(), &account_id
-    ));
+    ), db, conf);
 
     let now = chrono::Utc::now();
     let mut account = models::Account {
@@ -777,8 +790,9 @@ pub fn new_account_post(
         eab_sig: None,
     };
 
+    let mut client = client.inner().clone();
     if let Some(eab) = payload.external_account_binding {
-        let eab_id = try_result!(processing::verify_eab(&client, &eab, &acct.url, &acct_key));
+        let eab_id = try_result!(processing::verify_eab(&mut client, &eab, &acct.url, &acct_key).await, db, conf);
 
         account.eab_id = Some(eab_id);
         account.eab_protected_header = Some(eab.protected);
@@ -793,30 +807,32 @@ pub fn new_account_post(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        });
+        }, &db, &conf).await;
     }
 
-    try_result!(try_db_result!(db.0.transaction::<_, diesel::result::Error, _>(|| {
-        diesel::insert_into(schema::accounts::dsl::accounts)
-            .values(&account)
-            .execute(&db.0)?;
+    let account: models::Account = try_result!(try_db_result!(db.run(move |c| {
+        c.transaction::<_, diesel::result::Error, _>(|| {
+            let a = diesel::insert_into(schema::accounts::dsl::accounts)
+                .values(&account)
+                .get_result(c)?;
 
-        for contact in contacts {
-            diesel::insert_into(schema::account_contacts::dsl::account_contacts)
-                .values(contact)
-                .execute(&db.0)?;
-        }
+            for contact in contacts {
+                diesel::insert_into(schema::account_contacts::dsl::account_contacts)
+                    .values(contact)
+                    .execute(c)?;
+            }
 
-        Ok(())
-    }), "Unable to save account to database: {}"));
+            Ok(a)
+        })
+    }).await, "Unable to save account to database: {}"), db, conf);
 
-    let acct_obj = try_result!(account.to_json(&db, &conf));
+    let acct_obj = try_result!(account.to_json(&db, &conf).await, db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
         (responses::Headers {
-            responder: rocket_contrib::json::Json(acct_obj),
+            responder: rocket::serde::json::Json(acct_obj),
             headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, account.kid()))],
         }, rocket::http::Status::Created)
-    ), vec![]);
+    ), vec![], &db, &conf).await;
 }
 
 
@@ -844,26 +860,26 @@ pub fn account(_aid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/account/<aid>", data = "<acct>")]
-pub fn account_post(
+pub async fn account_post(
     ua: ACMEResult<ClientData>,
     acct: ACMEResult<jws::JWSRequest<types::account::AccountUpdate>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     aid: String,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::account::Account>> {
-    try_result!(ua);
-    let acct = try_result!(acct);
-    let acct_key = ensure_request_key_kid!(acct.key);
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::account::Account>> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(acct, db, conf);
+    let acct_key = ensure_request_key_kid!(acct.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    try_result!(check_account(&aid, &acct_key));
+    try_result!(check_account(&aid, &acct_key), db, conf);
 
     let payload = match acct.payload {
         Some(v) => v,
         None => {
-            let acct_obj = try_result!(acct_key.inner.to_json(&db, &conf));
+            let acct_obj = try_result!(acct_key.inner.to_json(&db, &conf).await, db, conf);
             return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                (rocket_contrib::json::Json(acct_obj), rocket::http::Status::Created)
-            ), vec![]);
+                (rocket::serde::json::Json(acct_obj), rocket::http::Status::Created)
+            ), vec![], &db, &conf).await;
         }
     };
 
@@ -878,7 +894,7 @@ pub fn account_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
 
         let status = payload.status.unwrap();
@@ -892,43 +908,48 @@ pub fn account_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
 
-        let new_acct: models::Account = try_result!(try_db_result!(diesel::update(&acct_key.inner)
-            .set(schema::accounts::dsl::status.eq(models::AccountStatus::Deactivated))
-            .get_result(&db.0), "Unable to deactivate account: {}"));
+        let new_acct: models::Account = try_result!(try_db_result!(db.run(move |c| {
+            diesel::update(&acct_key.inner)
+                .set(schema::accounts::dsl::status.eq(models::AccountStatus::Deactivated))
+                .get_result(c)
+        }).await, "Unable to deactivate account: {}"), db, conf);
 
-        let acct_obj = try_result!(new_acct.to_json(&db, &conf));
+        let acct_obj = try_result!(new_acct.to_json(&db, &conf).await, db, conf);
         return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-            (rocket_contrib::json::Json(acct_obj), rocket::http::Status::Created)
-        ), vec![]);
+            (rocket::serde::json::Json(acct_obj), rocket::http::Status::Created)
+        ), vec![], &db, &conf).await;
     }
 
     if let Some(new_contacts) = payload.contact {
         let contacts = try_result!(models::parse_contacts(
             &new_contacts.iter().map(|c| c.as_ref()).collect::<Vec<_>>(), &acct_key.inner.id
-        ));
+        ), db, conf);
 
-        try_result!(try_db_result!(db.0.transaction::<_, diesel::result::Error, _>(|| {
-            diesel::delete(schema::account_contacts::dsl::account_contacts)
-                .filter(schema::account_contacts::dsl::account.eq(&acct_key.inner.id))
-                .execute(&db.0)?;
+        let acct_key_id = acct_key.inner.id;
+        try_result!(try_db_result!(db.run(move |c| {
+            c.transaction::<_, diesel::result::Error, _>(|| {
+                diesel::delete(schema::account_contacts::dsl::account_contacts)
+                    .filter(schema::account_contacts::dsl::account.eq(&acct_key_id))
+                    .execute(c)?;
 
-            for contact in contacts {
-                diesel::insert_into(schema::account_contacts::dsl::account_contacts)
-                    .values(contact)
-                    .execute(&db.0)?;
-            }
+                for contact in contacts {
+                    diesel::insert_into(schema::account_contacts::dsl::account_contacts)
+                        .values(contact)
+                        .execute(c)?;
+                }
 
-            Ok(())
-        }), "Unable to save account to database: {}"));
+                Ok(())
+            })
+        }).await, "Unable to save account to database: {}"), db, conf);
     }
 
-    let acct_obj = try_result!(acct_key.inner.to_json(&db, &conf));
+    let acct_obj = try_result!(acct_key.inner.to_json(&db, &conf).await, db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (rocket_contrib::json::Json(acct_obj), rocket::http::Status::Ok)
-    ), vec![]);
+        (rocket::serde::json::Json(acct_obj), rocket::http::Status::Ok)
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/account/<_aid>/orders")]
@@ -937,23 +958,25 @@ pub fn account_orders(_aid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/account/<aid>/orders", data = "<acct>")]
-pub fn account_orders_post(
+pub async fn account_orders_post(
     ua: ACMEResult<ClientData>,
     acct: ACMEResult<jws::JWSRequest<()>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     aid: String,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::order::List>> {
-    try_result!(ua);
-    let acct = try_result!(acct);
-    let acct_key = ensure_request_key_kid!(acct.key);
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::order::List>> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(acct, db, conf);
+    let acct_key = ensure_request_key_kid!(acct.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    ensure_post_as_get!(acct.payload);
-    try_result!(check_account(&aid, &acct_key));
+    ensure_post_as_get!(acct.payload, db, conf);
+    try_result!(check_account(&aid, &acct_key), db, conf);
 
-    let account_orders: Vec<models::Order> = try_result!(try_db_result!(schema::orders::dsl::orders.filter(
-        schema::orders::dsl::account.eq(&acct_key.inner.id)
-    ).load(&db.0), "Failed to get account orders: {}"));
+    let account_orders: Vec<models::Order> = try_result!(try_db_result!(db.run(move |c| {
+        schema::orders::dsl::orders.filter(
+            schema::orders::dsl::account.eq(&acct_key.inner.id)
+        ).load(c)
+    }).await, "Failed to get account orders: {}"), db, conf);
 
     let list_obj = types::order::List {
         orders: account_orders.into_iter()
@@ -961,8 +984,8 @@ pub fn account_orders_post(
     };
 
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (rocket_contrib::json::Json(list_obj), rocket::http::Status::Ok)
-    ), vec![]);
+        (rocket::serde::json::Json(list_obj), rocket::http::Status::Ok)
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/key_change")]
@@ -972,26 +995,28 @@ pub fn key_change() -> rocket::http::Status {
 
 #[derive(Responder)]
 pub enum KeyChangeResponse {
-    Headers(responses::Headers<rocket_contrib::json::Json<types::error::Error>>),
+    Headers(responses::Headers<rocket::serde::json::Json<types::error::Error>>),
     None(&'static str),
 }
 
 #[post("/acme/key_change", data = "<acct>")]
-pub fn key_change_post(
-    uri: &rocket::http::uri::Origin,
+pub async fn key_change_post(
+    uri: &rocket::http::uri::Origin<'_>,
     ua: ACMEResult<ClientData>,
     acct: ACMEResult<jws::JWSRequest<types::jose::FlattenedJWS>>,
     db: DBConn,
-    conf: rocket::State<Config>,
-) -> responses::ACMEResponse<'static, KeyChangeResponse> {
-    try_result!(ua);
-    let acct = try_result!(acct);
-    let acct_key = ensure_request_key_kid!(acct.key);
+    conf: &rocket::State<Config>,
+) -> responses::ACMEResponse<'static, 'static, KeyChangeResponse> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(acct, db, conf);
+    let acct_key = ensure_request_key_kid!(acct.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    let payload = ensure_not_post_as_get!(acct.payload);
+    let payload = ensure_not_post_as_get!(acct.payload, db, conf);
 
-    let inner_acct: jws::JWSRequestInner<types::account::KeyChange> = try_result!(jws::JWSRequestInner::from_jws(uri.path(), payload, &conf, &db));
-    let new_acct_key = ensure_request_key_jwk!(inner_acct.key);
+    let path = uri.path();
+    let inner_acct: jws::JWSRequestInner<types::account::KeyChange> = try_result!(
+        jws::JWSRequestInner::from_jws(path, payload, &conf, &db).await, db, conf);
+    let new_acct_key = ensure_request_key_jwk!(inner_acct.key, db, conf);
 
     let old_key: openssl::pkey::PKey<openssl::pkey::Public> = match (&inner_acct.payload.old_key).try_into() {
         Ok(v) => v,
@@ -1004,7 +1029,7 @@ pub fn key_change_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
 
@@ -1017,7 +1042,7 @@ pub fn key_change_post(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        });
+        }, &db, &conf).await;
     }
     if !acct_key.key.public_eq(&old_key) {
         return responses::ACMEResponse::new_error(types::error::Error {
@@ -1028,24 +1053,27 @@ pub fn key_change_post(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        });
+        }, &db, &conf).await;
     }
 
     let new_acct_key_bytes = match new_acct_key.public_key_to_der() {
         Ok(v) => v,
         Err(_) => {
-            return responses::ACMEResponse::new_error(internal_server_error!());
+            return responses::ACMEResponse::new_error(internal_server_error!(), &db, &conf).await;
         }
     };
 
-    let existing_account: Option<models::Account> = try_result!(try_db_result!(schema::accounts::dsl::accounts.filter(
-        schema::accounts::dsl::public_key.eq(&new_acct_key_bytes)
-    ).first::<models::Account>(&db.0).optional(), "Unable to search for existing account: {}"));
+    let nakb = new_acct_key_bytes.clone();
+    let existing_account: Option<models::Account> = try_result!(try_db_result!(db.run(move |c| {
+        schema::accounts::dsl::accounts.filter(
+            schema::accounts::dsl::public_key.eq(&nakb)
+        ).first::<models::Account>(c).optional()
+    }).await, "Unable to search for existing account: {}"), db, conf);
 
     if let Some(acct) = existing_account {
         return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
             (KeyChangeResponse::Headers(responses::Headers {
-                responder: rocket_contrib::json::Json(types::error::Error {
+                responder: rocket::serde::json::Json(types::error::Error {
                     error_type: types::error::Type::Malformed,
                     status: 409,
                     title: "Conflict".to_string(),
@@ -1056,16 +1084,16 @@ pub fn key_change_post(
                 }),
                 headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, acct.kid()))],
             }), rocket::http::Status::Conflict)
-        ), vec![]);
+        ), vec![], &db, &conf).await;
     }
 
-    try_result!(try_db_result!(diesel::update(&acct_key.inner)
+    try_result!(try_db_result!(db.run(move |c| diesel::update(&acct_key.inner)
             .set(schema::accounts::dsl::public_key.eq(new_acct_key_bytes))
-            .execute(&db.0), "Unable to update account: {}"));
+            .execute(c)).await, "Unable to update account: {}"), db, conf);
 
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
         (KeyChangeResponse::None(""), rocket::http::Status::Ok)
-    ), vec![]);
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/new_order")]
@@ -1074,28 +1102,30 @@ pub fn new_order() -> rocket::http::Status {
 }
 
 #[post("/acme/new_order", data = "<order>")]
-pub fn new_order_post(
+pub async fn new_order_post(
     ua: ACMEResult<ClientData>,
     order: ACMEResult<jws::JWSRequest<types::order::OrderCreate>>,
     db: DBConn,
-    conf: rocket::State<Config>,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, responses::Headers<rocket_contrib::json::Json<types::order::Order>>> {
-    try_result!(ua);
-    let acct = try_result!(order);
-    let acct_key = ensure_request_key_kid!(acct.key);
+    conf: &rocket::State<Config>,
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, responses::Headers<rocket::serde::json::Json<types::order::Order>>> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(order, db, conf);
+    let acct_key = ensure_request_key_kid!(acct.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    let payload = ensure_not_post_as_get!(acct.payload);
+    let payload = ensure_not_post_as_get!(acct.payload, db, conf);
 
-    let (db_order, ca_order) = try_result!(processing::create_order(&client, &db, &payload, &acct_key));
+    let mut client = client.inner().clone();
+    let (db_order, ca_order) = try_result!(
+        processing::create_order(&mut client, &db, &payload, &acct_key).await, db, conf);
 
-    let order_obj = try_result!(db_order.to_json(&db, ca_order, &conf));
+    let order_obj = try_result!(db_order.to_json(&db, ca_order, &conf).await, db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
         (responses::Headers {
-            responder: rocket_contrib::json::Json(order_obj),
+            responder: rocket::serde::json::Json(order_obj),
             headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, db_order.url()))],
         }, rocket::http::Status::Created)
-    ), vec![]);
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/new_authz")]
@@ -1104,36 +1134,40 @@ pub fn new_authz() -> rocket::http::Status {
 }
 
 #[post("/acme/new_authz", data = "<order>")]
-pub fn new_authz_post(
+pub async fn new_authz_post(
     ua: ACMEResult<ClientData>,
     order: ACMEResult<jws::JWSRequest<types::authorization::AuthorizationCreate>>,
     db: DBConn,
-    conf: rocket::State<Config>,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, responses::Headers<rocket_contrib::json::Json<types::authorization::Authorization>>> {
-    try_result!(ua);
-    let acct = try_result!(order);
-    let acct_key = ensure_request_key_kid!(acct.key);
+    conf: &rocket::State<Config>,
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, responses::Headers<rocket::serde::json::Json<types::authorization::Authorization>>> {
+    try_result!(ua, db, conf);
+    let acct = try_result!(order, db, conf);
+    let acct_key = ensure_request_key_kid!(acct.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    let payload = ensure_not_post_as_get!(acct.payload);
+    let payload = ensure_not_post_as_get!(acct.payload, db, conf);
 
-    let (db_authz, ca_authz) = try_result!(processing::create_authz(&client, &db, &payload, &acct_key));
+    let mut client = client.inner().clone();
+    let (db_authz, ca_authz) = try_result!(
+        processing::create_authz(&mut client, &db, &payload, &acct_key).await, db, conf);
 
-    let authz_obj = try_result!(db_authz.to_json(ca_authz, &conf));
+    let authz_obj = try_result!(db_authz.to_json(ca_authz, &conf), db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
         (responses::Headers {
-            responder: rocket_contrib::json::Json(authz_obj),
+            responder: rocket::serde::json::Json(authz_obj),
             headers: vec![("Location".to_string(), format!("{}{}", conf.external_uri, db_authz.url()))],
         }, rocket::http::Status::Created)
-    ), vec![]);
+    ), vec![], &db, &conf).await;
 }
 
-fn get_order(oid: &str, db: &DBConn, account: &Account) -> ACMEResult<models::Order> {
+async fn get_order(oid: &str, db: &DBConn, account: &Account) -> ACMEResult<models::Order> {
     let oid_uuid = decode_id!(oid)?;
 
-    let existing_order: models::Order = match try_db_result!(schema::orders::dsl::orders.filter(
-        schema::orders::dsl::id.eq(&oid_uuid)
-    ).first::<models::Order>(&db.0).optional(), "Unable to search for order: {}")? {
+    let existing_order: models::Order = match try_db_result!(db.run(move |c| {
+        schema::orders::dsl::orders.filter(
+            schema::orders::dsl::id.eq(&oid_uuid)
+        ).first::<models::Order>(c).optional()
+    }).await, "Unable to search for order: {}")? {
         Some(o) => o,
         None => return Err(types::error::Error {
             error_type: types::error::Type::Malformed,
@@ -1161,12 +1195,14 @@ fn get_order(oid: &str, db: &DBConn, account: &Account) -> ACMEResult<models::Or
     Ok(existing_order)
 }
 
-fn get_authz(aid: &str, db: &DBConn, account: &Account) -> ACMEResult<models::Authorization> {
+async fn get_authz(aid: &str, db: &DBConn, account: &Account) -> ACMEResult<models::Authorization> {
     let aid_uuid = decode_id!(aid)?;
 
-    let existing_authz: models::Authorization = match try_db_result!(schema::authorizations::dsl::authorizations.filter(
-        schema::authorizations::dsl::id.eq(&aid_uuid)
-    ).first::<models::Authorization>(&db.0).optional(), "Unable to search for authorization: {}")? {
+    let existing_authz: models::Authorization = match try_db_result!(db.run(move |c| {
+        schema::authorizations::dsl::authorizations.filter(
+            schema::authorizations::dsl::id.eq(&aid_uuid)
+        ).first::<models::Authorization>(c).optional()
+    }).await, "Unable to search for authorization: {}")? {
         Some(o) => o,
         None => return Err(types::error::Error {
             error_type: types::error::Type::Malformed,
@@ -1200,31 +1236,30 @@ pub fn order(_oid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/order/<oid>", data = "<order>")]
-pub fn order_post(
+pub async fn order_post(
     ua: ACMEResult<ClientData>,
     order: ACMEResult<jws::JWSRequest<()>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     oid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::order::Order>> {
-    try_result!(ua);
-    let order = try_result!(order);
-    let acct_key = ensure_request_key_kid!(order.key);
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::order::Order>> {
+    try_result!(ua, db, conf);
+    let order = try_result!(order, db, conf);
+    let acct_key = ensure_request_key_kid!(order.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    ensure_post_as_get!(order.payload);
+    ensure_post_as_get!(order.payload, db, conf);
 
-    let existing_order = try_result!(get_order(&oid, &db, &acct_key));
-    let mut locked_client = client.lock();
-    let order_result = try_result!(try_tonic_result(locked_client.get_order(crate::cert_order::IdRequest {
+    let existing_order = try_result!(get_order(&oid, &db, &acct_key).await, db, conf);
+    let mut client = client.inner().clone();
+    let order_result = try_result!(try_tonic_result(client.get_order(crate::cert_order::IdRequest {
         id: existing_order.ca_id.clone(),
-    })));
-    std::mem::drop(locked_client);
+    }).await), db, conf);
 
-    let order_obj = try_result!(existing_order.to_json(&db, order_result.into_inner(), &conf));
+    let order_obj = try_result!(existing_order.to_json(&db, order_result.into_inner(), &conf).await, db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (rocket_contrib::json::Json(order_obj), rocket::http::Status::Ok)
-    ), vec![]);
+        (rocket::serde::json::Json(order_obj), rocket::http::Status::Ok)
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/order/<_oid>/finalize")]
@@ -1233,23 +1268,23 @@ pub fn order_finalize(_oid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/order/<oid>/finalize", data = "<order>")]
-pub fn order_finalize_post(
+pub async fn order_finalize_post(
     ua: ACMEResult<ClientData>,
     order: ACMEResult<jws::JWSRequest<types::order::OrderFinalize>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     oid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::order::Order>> {
-    try_result!(ua);
-    let order = try_result!(order);
-    let acct_key = ensure_request_key_kid!(order.key);
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::order::Order>> {
+    try_result!(ua, db, conf);
+    let order = try_result!(order, db, conf);
+    let acct_key = ensure_request_key_kid!(order.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    let order_finalize = ensure_not_post_as_get!(order.payload);
+    let order_finalize = ensure_not_post_as_get!(order.payload, db, conf);
 
-    let existing_order = try_result!(get_order(&oid, &db, &acct_key));
+    let existing_order = try_result!(get_order(&oid, &db, &acct_key).await, db, conf);
 
-    let csr = match base64::decode_config(&order_finalize.csr, base64::URL_SAFE) {
+    let csr = match BASE64_URL_SAFE.decode(&order_finalize.csr) {
         Ok(c) => c,
         Err(_) => {
             return responses::ACMEResponse::new_error(types::error::Error {
@@ -1260,23 +1295,22 @@ pub fn order_finalize_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
 
-    let mut locked_client = client.lock();
-    let order_result = try_result!(try_tonic_result(locked_client.finalize_order(crate::cert_order::FinalizeOrderRequest {
+    let mut client = client.inner().clone();
+    let order_result = try_result!(try_tonic_result(client.finalize_order(crate::cert_order::FinalizeOrderRequest {
         id: existing_order.ca_id.clone(),
         csr,
-    })));
-    std::mem::drop(locked_client);
+    }).await), db, conf);
 
-    let ca_order = try_result!(processing::unwrap_order_response(order_result.into_inner()));
+    let ca_order = try_result!(processing::unwrap_order_response(order_result.into_inner()), db, conf);
 
-    let order_obj = try_result!(existing_order.to_json(&db, ca_order, &conf));
+    let order_obj = try_result!(existing_order.to_json(&db, ca_order, &conf).await, db, conf);
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (rocket_contrib::json::Json(order_obj), rocket::http::Status::Ok)
-    ), vec![]);
+        (rocket::serde::json::Json(order_obj), rocket::http::Status::Ok)
+    ), vec![], &db, &conf).await;
 }
 
 #[get("/acme/authorization/<_aid>")]
@@ -1285,33 +1319,32 @@ pub fn authorization(_aid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/authorization/<aid>", data = "<authz>")]
-pub fn authorization_post(
+pub async fn authorization_post(
     ua: ACMEResult<ClientData>,
     authz: ACMEResult<jws::JWSRequest<types::authorization::AuthorizationUpdate>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     aid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::authorization::Authorization>> {
-    try_result!(ua);
-    let authz = try_result!(authz);
-    let acct_key = ensure_request_key_kid!(authz.key);
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::authorization::Authorization>> {
+    try_result!(ua, db, conf);
+    let authz = try_result!(authz, db, conf);
+    let acct_key = ensure_request_key_kid!(authz.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
 
-    let existing_authz = try_result!(get_authz(&aid, &db, &acct_key));
+    let mut client = client.inner().clone();
+    let existing_authz = try_result!(get_authz(&aid, &db, &acct_key).await, db, conf);
 
     match authz.payload {
         None => {
-            let mut locked_client = client.lock();
-            let authz_result = try_result!(try_tonic_result(locked_client.get_authorization(crate::cert_order::IdRequest {
+            let authz_result = try_result!(try_tonic_result(client.get_authorization(crate::cert_order::IdRequest {
                 id: existing_authz.ca_id.clone(),
-            })));
-            std::mem::drop(locked_client);
+            }).await), db, conf);
 
-            let authz_obj = try_result!(existing_authz.to_json(authz_result.into_inner(), &conf));
+            let authz_obj = try_result!(existing_authz.to_json(authz_result.into_inner(), &conf), db, conf);
             return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                (rocket_contrib::json::Json(authz_obj), rocket::http::Status::Ok)
-            ), vec![]);
+                (rocket::serde::json::Json(authz_obj), rocket::http::Status::Ok)
+            ), vec![], &db, &conf).await;
         }
         Some(authz_update) => {
             if authz_update.status.is_some() {
@@ -1326,19 +1359,17 @@ pub fn authorization_post(
                         sub_problems: vec![],
                         instance: None,
                         identifier: None,
-                    });
+                    }, &db, &conf).await;
                 }
-                let mut locked_client = client.lock();
-                let authz_result = try_result!(try_tonic_result(locked_client.deactivate_authorization(crate::cert_order::IdRequest {
+                let authz_result = try_result!(try_tonic_result(client.deactivate_authorization(crate::cert_order::IdRequest {
                     id: existing_authz.ca_id.clone(),
-                })));
-                std::mem::drop(locked_client);
+                }).await), db, conf);
 
-                let ca_authz = try_result!(processing::unwrap_authz_response(authz_result.into_inner()));
-                let authz_obj = try_result!(existing_authz.to_json(ca_authz, &conf));
+                let ca_authz = try_result!(processing::unwrap_authz_response(authz_result.into_inner()), db, conf);
+                let authz_obj = try_result!(existing_authz.to_json(ca_authz, &conf), db, conf);
                 return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                    (rocket_contrib::json::Json(authz_obj), rocket::http::Status::Ok)
-                ), vec![]);
+                    (rocket::serde::json::Json(authz_obj), rocket::http::Status::Ok)
+                ), vec![], &db, &conf).await;
             }
             return responses::ACMEResponse::new_error(types::error::Error {
                 error_type: types::error::Type::Malformed,
@@ -1348,7 +1379,7 @@ pub fn authorization_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     }
 }
@@ -1359,21 +1390,21 @@ pub fn challenge(_aid: String, _cid: String) -> rocket::http::Status {
 }
 
 #[post("/acme/challenge/<aid>/<cid>", data = "<chall>")]
-pub fn challenge_post(
+pub async fn challenge_post(
     ua: ACMEResult<ClientData>,
     chall: ACMEResult<jws::JWSRequest<types::challenge::ChallengeRespond>>,
     db: DBConn,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     aid: String,
     cid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, rocket_contrib::json::Json<types::challenge::Challenge>> {
-    try_result!(ua);
-    let chall = try_result!(chall);
-    let acct_key = ensure_request_key_kid!(chall.key);
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, rocket::serde::json::Json<types::challenge::Challenge>> {
+    try_result!(ua, db, conf);
+    let chall = try_result!(chall, db, conf);
+    let acct_key = ensure_request_key_kid!(chall.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
 
-    let cid = match base64::decode_config(cid, base64::URL_SAFE_NO_PAD) {
+    let cid = match BASE64_URL_SAFE_NO_PAD.decode(cid) {
         Ok(n) => n,
         Err(_) => {
             return responses::ACMEResponse::new_error(types::error::Error {
@@ -1384,47 +1415,44 @@ pub fn challenge_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
-    let existing_authz = try_result!(get_authz(&aid, &db, &acct_key));
+    let existing_authz = try_result!(get_authz(&aid, &db, &acct_key).await, db, conf);
 
+    let mut client = client.inner().clone();
     let chall_obj = match chall.payload {
         None => {
-            let mut locked_client = client.lock();
-            let chall_result = try_result!(try_tonic_result(locked_client.get_challenge(crate::cert_order::ChallengeIdRequest {
+            let chall_result = try_result!(try_tonic_result(client.get_challenge(crate::cert_order::ChallengeIdRequest {
                 id: cid,
                 auth_id: existing_authz.ca_id.clone(),
-            }))).into_inner();
-            std::mem::drop(locked_client);
+            }).await), db, conf).into_inner();
 
-            try_result!(existing_authz.challenge_to_json(chall_result, &conf))
+            try_result!(existing_authz.challenge_to_json(chall_result, &conf), db, conf)
         }
         Some(_chall_response) => {
             let jwk: types::jose::JWK = (&acct_key.key).try_into().unwrap();
             let account_thumbprint = jws::make_jwk_thumbprint(&jwk);
 
-            let mut locked_client = client.lock();
-            let chall_result = try_result!(try_tonic_result(locked_client.complete_challenge(crate::cert_order::CompleteChallengeRequest {
+            let chall_result = try_result!(try_tonic_result(client.complete_challenge(crate::cert_order::CompleteChallengeRequest {
                 id: cid,
                 auth_id: existing_authz.ca_id.clone(),
                 account_thumbprint,
                 account_uri: format!("{}{}", conf.external_uri, acct_key.inner.kid()),
-            }))).into_inner();
-            std::mem::drop(locked_client);
+            }).await), db, conf).into_inner();
 
-            let ca_chall = try_result!(processing::unwrap_chall_response(chall_result));
-            try_result!(existing_authz.challenge_to_json(ca_chall, &conf))
+            let ca_chall = try_result!(processing::unwrap_chall_response(chall_result), db, conf);
+            try_result!(existing_authz.challenge_to_json(ca_chall, &conf), db, conf)
         }
     };
 
     return responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-        (rocket_contrib::json::Json(chall_obj), rocket::http::Status::Ok)
+        (rocket::serde::json::Json(chall_obj), rocket::http::Status::Ok)
     ), vec![links::LinkHeader {
         url: existing_authz.url(),
         relative: true,
         relation: "up".to_string(),
-    }]);
+    }], &db, &conf).await;
 }
 
 
@@ -1434,18 +1462,18 @@ pub fn revoke() -> rocket::http::Status {
 }
 
 #[post("/acme/revoke", data = "<authz>")]
-pub fn revoke_post(
+pub async fn revoke_post(
     ua: ACMEResult<ClientData>,
     db: DBConn,
     authz: ACMEResult<jws::JWSRequest<types::revoke::RevokeCert>>,
-    conf: rocket::State<Config>,
-    client: rocket::State<processing::BlockingOrderClient>,
-) -> responses::ACMEResponse<'static, ()> {
-    try_result!(ua);
-    let authz = try_result!(authz);
-    let revoke_cert = ensure_not_post_as_get!(authz.payload);
+    conf: &rocket::State<Config>,
+    client: &rocket::State<processing::OrderClient>,
+) -> responses::ACMEResponse<'static, 'static, ()> {
+    try_result!(ua, db, conf);
+    let authz = try_result!(authz, db, conf);
+    let revoke_cert = ensure_not_post_as_get!(authz.payload, db, conf);
 
-    let cert_bytes = match base64::decode_config(&revoke_cert.certificate, base64::URL_SAFE) {
+    let cert_bytes = match BASE64_URL_SAFE.decode(&revoke_cert.certificate) {
         Ok(c) => c,
         Err(_) => {
             return responses::ACMEResponse::new_error(types::error::Error {
@@ -1456,7 +1484,7 @@ pub fn revoke_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
     let cert = match openssl::x509::X509::from_der(&cert_bytes) {
@@ -1470,7 +1498,7 @@ pub fn revoke_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
 
@@ -1488,7 +1516,7 @@ pub fn revoke_post(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
     let serial_number = cert.serial_number().to_bn().unwrap().to_vec();
@@ -1523,25 +1551,25 @@ pub fn revoke_post(
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &db, &conf).await;
             }
         }
     };
 
-    let mut locked_client = client.lock();
-    let revoke_result = try_result!(try_tonic_result(locked_client.revoke_certificate(revoke_req))).into_inner();
-    std::mem::drop(locked_client);
+    let mut client = client.inner().clone();
+    let revoke_result = try_result!(
+        try_tonic_result(client.revoke_certificate(revoke_req).await), db, conf).into_inner();
 
     if let Some(error) = revoke_result.error {
         return responses::ACMEResponse::new_error(crate::util::error_list_to_result(
             error.errors.into_iter().map(processing::rpc_error_to_problem).collect(),
             "Multiple errors make this request invalid".to_string(),
-        ).err().unwrap());
+        ).err().unwrap(), &db, &conf).await;
     }
 
     responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
         ((), rocket::http::Status::Ok)
-    ), vec![])
+    ), vec![], &db, &conf).await
 }
 
 enum CertFormat {
@@ -1551,22 +1579,39 @@ enum CertFormat {
     DERPks7,
 }
 
+pub struct CertificateResponse {
+    format: rocket::http::ContentType,
+    body: Vec<u8>
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for CertificateResponse {
+    fn respond_to(self, _req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        Ok(rocket::response::Response::build()
+            .header(self.format)
+            .raw_header("Cache-Control", "public, immutable")
+            .raw_header("Vary", "Accept")
+            .sized_body(self.body.len(), std::io::Cursor::new(self.body))
+            .finalize())
+    }
+}
+
 #[get("/acme/certificate/<cid>?<idx>&<cidx>")]
-pub fn certificate(
+pub async fn certificate(
     ua: ACMEResult<ClientData>,
     db: DBConn,
+    conf: &rocket::State<Config>,
     cid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
+    client: &rocket::State<processing::OrderClient>,
     idx: Option<usize>,
     cidx: Option<usize>,
-) -> responses::ACMEResponse<'static, rocket::response::Response<'static>> {
-    let ua = try_result!(ua);
+) -> responses::ACMEResponse<'static, 'static, CertificateResponse> {
+    let ua = try_result!(ua, db, conf);
 
-    let cid_uuid = try_result!(decode_id!(&cid));
+    let cid_uuid = try_result!(decode_id!(&cid), db, conf);
 
-    let existing_cert: models::Certificate = match try_result!(try_db_result!(schema::certificates::dsl::certificates.filter(
+    let existing_cert: models::Certificate = match try_result!(try_db_result!(db.run(move |c| schema::certificates::dsl::certificates.filter(
         schema::certificates::dsl::id.eq(&cid_uuid)
-    ).first::<models::Certificate>(&db.0).optional(), "Unable to search for certificate: {}")) {
+    ).first::<models::Certificate>(c).optional()).await, "Unable to search for certificate: {}"), db, conf) {
         Some(o) => o,
         None => return responses::ACMEResponse::new_error(types::error::Error {
             error_type: types::error::Type::Malformed,
@@ -1576,31 +1621,30 @@ pub fn certificate(
             sub_problems: vec![],
             instance: None,
             identifier: None,
-        })
+        }, &db, &conf).await
     };
 
-    let mut locked_client = client.lock();
-    let mut ca_cert = try_result!(try_tonic_result(locked_client.get_certificate(crate::cert_order::IdRequest {
+    let mut client = client.inner().clone();
+    let mut ca_cert = try_result!(try_tonic_result(client.get_certificate(crate::cert_order::IdRequest {
         id: existing_cert.ca_id.clone(),
-    }))).into_inner();
-    std::mem::drop(locked_client);
+    }).await), db, conf).into_inner();
 
     let (mut chain, alternatives) = match cidx {
         Some(0) | None => match ca_cert.primary_chain {
             Some(c) => {
                 (c, (0..ca_cert.alternative_chains.len()).map(|i| {
-                    rocket::uri!(certificate: cid = &cid, idx = _, cidx = i).to_string()
+                    rocket::uri!(certificate(cid = &cid, idx = _, cidx = Some(i))).to_string()
                 }).collect::<Vec<_>>())
             }
-            None => return responses::ACMEResponse::new_error(crate::internal_server_error!())
+            None => return responses::ACMEResponse::new_error(crate::internal_server_error!(), &db, &conf).await
         }
         Some(i) => if i < ca_cert.alternative_chains.len() {
             let mut alts = (0..ca_cert.alternative_chains.len())
                 .filter(|ci| i != *ci)
                 .map(|i| {
-                    rocket::uri!(certificate: cid = &cid, idx = _, cidx = i).to_string()
+                    rocket::uri!(certificate(cid = &cid, idx = _, cidx = Some(i))).to_string()
                 }).collect::<Vec<_>>();
-            alts.push(rocket::uri!(certificate: cid = &cid, idx = _, cidx = _).to_string());
+            alts.push(rocket::uri!(certificate(cid = &cid, idx = _, cidx = _)).to_string());
             (ca_cert.alternative_chains.remove(i), alts)
         } else {
             return responses::ACMEResponse::new_error(types::error::Error {
@@ -1611,7 +1655,7 @@ pub fn certificate(
                 sub_problems: vec![],
                 instance: None,
                 identifier: None,
-            });
+            }, &db, &conf).await;
         }
     };
 
@@ -1628,8 +1672,8 @@ pub fn certificate(
     let up_link = if up_idx + 1 < chain.certificates.len() {
         Some(links::LinkHeader {
             url: match cidx {
-                Some(ci) => rocket::uri!(certificate: cid = &cid, idx = up_idx+1, cidx = ci).to_string(),
-                None => rocket::uri!(certificate: cid = &cid, idx = up_idx+1, cidx = _).to_string(),
+                Some(ci) => rocket::uri!(certificate(cid = &cid, idx = Some(up_idx+1), cidx = Some(ci))).to_string(),
+                None => rocket::uri!(certificate(cid = &cid, idx = Some(up_idx+1), cidx = _)).to_string(),
             },
             relative: true,
             relation: "up".to_string(),
@@ -1674,14 +1718,14 @@ pub fn certificate(
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                })
+                }, &db, &conf).await
             }
         }
         None => CertFormat::PEMChain
     };
 
     let make_pem = |c: Vec<u8>| {
-        let cert_b64 = base64::encode(c)
+        let cert_b64 = BASE64_STANDARD.encode(c)
             .as_bytes().chunks(76)
             .map(|buf| unsafe { std::str::from_utf8_unchecked(buf) })
             .collect::<Vec<&str>>().join("\n");
@@ -1693,17 +1737,12 @@ pub fn certificate(
         CertFormat::PEMChain => {
             let cert = chain.certificates.into_iter().map(make_pem).collect::<Vec<_>>().join("\n");
 
-            let body = std::io::Cursor::new(cert.as_bytes().to_vec());
-            let resp = rocket::response::Response::build()
-                .header(rocket::http::ContentType(pem_chain))
-                .raw_header("Cache-Control", "public, immutable")
-                .raw_header("Vary", "Accept")
-                .sized_body(body)
-                .finalize();
-
             responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                (resp, rocket::http::Status::Ok)
-            ), alternatives)
+                (CertificateResponse {
+                    format: rocket::http::ContentType(pem_chain),
+                    body: cert.as_bytes().to_vec()
+                }, rocket::http::Status::Ok)
+            ), alternatives, &db, &conf).await
         }
         CertFormat::PEM => {
             if up_idx >= chain.certificates.len() {
@@ -1715,25 +1754,20 @@ pub fn certificate(
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &db, &conf).await;
             }
             let cert = make_pem(chain.certificates.remove(up_idx));
-
-            let body = std::io::Cursor::new(cert.as_bytes().to_vec());
-            let resp = rocket::response::Response::build()
-                .header(rocket::http::ContentType(pem_chain))
-                .raw_header("Cache-Control", "public, immutable")
-                .raw_header("Vary", "Accept")
-                .sized_body(body)
-                .finalize();
 
             if let Some(up_link) = up_link {
                 alternatives.push(up_link);
             }
 
             responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                (resp, rocket::http::Status::Ok)
-            ), alternatives)
+                (CertificateResponse {
+                    format: rocket::http::ContentType(pem_chain),
+                    body: cert.as_bytes().to_vec()
+                }, rocket::http::Status::Ok)
+            ), alternatives, &db, &conf).await
         }
         CertFormat::DERPkix | CertFormat::DERPks7 => {
             if up_idx >= chain.certificates.len() {
@@ -1745,53 +1779,73 @@ pub fn certificate(
                     sub_problems: vec![],
                     instance: None,
                     identifier: None,
-                });
+                }, &db, &conf).await;
             }
             let cert = chain.certificates.remove(up_idx);
-
-            let resp = rocket::response::Response::build()
-                .header(rocket::http::ContentType(match cert_format {
-                    CertFormat::DERPkix => pkix_cert,
-                    CertFormat::DERPks7 => pkcs7_mime,
-                    _ => unreachable!()
-                }))
-                .raw_header("Cache-Control", "public, immutable")
-                .raw_header("Vary", "Accept")
-                .sized_body(std::io::Cursor::new(cert))
-                .finalize();
 
             if let Some(up_link) = up_link {
                 alternatives.push(up_link);
             }
 
             responses::ACMEResponse::new(responses::InnerACMEResponse::Ok(
-                (resp, rocket::http::Status::Ok)
-            ), alternatives)
+                (CertificateResponse {
+                    format: rocket::http::ContentType(match cert_format {
+                        CertFormat::DERPkix => pkix_cert,
+                        CertFormat::DERPks7 => pkcs7_mime,
+                        _ => unreachable!()
+                    }),
+                    body: cert,
+                }, rocket::http::Status::Ok)
+            ), alternatives, &db, &conf).await
         }
     }
 }
 
 #[post("/acme/certificate/<cid>?<idx>&<cidx>", data = "<cert>")]
-pub fn certificate_post(
+pub async fn certificate_post(
     ua: ACMEResult<ClientData>,
     cert: ACMEResult<jws::JWSRequest<()>>,
-    conf: rocket::State<Config>,
+    conf: &rocket::State<Config>,
     db: DBConn,
     cid: String,
-    client: rocket::State<processing::BlockingOrderClient>,
+    client: &rocket::State<processing::OrderClient>,
     idx: Option<usize>,
     cidx: Option<usize>,
-) -> responses::ACMEResponse<'static, rocket::response::Response<'static>> {
-    let cert = try_result!(cert);
-    let acct_key = ensure_request_key_kid!(cert.key);
+) -> responses::ACMEResponse<'static, 'static, CertificateResponse> {
+    let cert = try_result!(cert, db, conf);
+    let acct_key = ensure_request_key_kid!(cert.key, db, conf);
     ensure_tos_agreed!(acct_key, conf, db);
-    ensure_post_as_get!(cert.payload);
+    ensure_post_as_get!(cert.payload, db, conf);
 
-    certificate(ua, db, cid, client, idx, cidx)
+    certificate(ua, db, conf, cid, client, idx, cidx).await
+}
+
+macro_rules! catcher_get_state {
+    ($req:expr) => {
+        {
+            let db = match $req.guard::<DBConn>().await {
+                rocket::request::Outcome::Success(v) => v,
+                rocket::request::Outcome::Failure(_) => {
+                    return responses::ACMEResponse::Raw(responses::InnerACMEResponse::Error(rocket::serde::json::Json(internal_server_error!())))
+                }
+                rocket::request::Outcome::Forward(_) => unreachable!()
+            };
+            let conf = match $req.guard::<&rocket::State<Config>>().await {
+                rocket::request::Outcome::Success(v) => v,
+                rocket::request::Outcome::Failure(_) => {
+                    return responses::ACMEResponse::Raw(responses::InnerACMEResponse::Error(rocket::serde::json::Json(internal_server_error!())))
+                }
+                rocket::request::Outcome::Forward(_) => unreachable!()
+            };
+            (db, conf)
+        }
+    }
 }
 
 #[catch(400)]
-pub fn acme_400<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_400<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Malformed,
         status: 400,
@@ -1800,11 +1854,13 @@ pub fn acme_400<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(401)]
-pub fn acme_401<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_401<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Unauthorized,
         status: 401,
@@ -1813,11 +1869,13 @@ pub fn acme_401<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(404)]
-pub fn acme_404<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_404<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Malformed,
         status: 404,
@@ -1826,11 +1884,13 @@ pub fn acme_404<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(405)]
-pub fn acme_405<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_405<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Malformed,
         status: 405,
@@ -1839,11 +1899,13 @@ pub fn acme_405<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(415)]
-pub fn acme_415<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_415<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Malformed,
         status: 415,
@@ -1855,11 +1917,13 @@ pub fn acme_415<'r>(req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(422)]
-pub fn acme_422<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
+pub async fn acme_422<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
     responses::ACMEResponse::new_error(types::error::Error {
         error_type: types::error::Type::Malformed,
         status: 422,
@@ -1868,10 +1932,12 @@ pub fn acme_422<'r>(_req: &rocket::Request) -> responses::ACMEResponse<'r, ()> {
         sub_problems: vec![],
         instance: None,
         identifier: None,
-    })
+    }, &db, &conf).await
 }
 
 #[catch(500)]
-pub fn acme_500<'r>() -> responses::ACMEResponse<'r, ()> {
-    responses::ACMEResponse::new_error(internal_server_error!())
+pub async fn acme_500<'r>(req: &rocket::Request<'_>) -> responses::ACMEResponse<'r, 'static, ()> {
+    let (db, conf) = catcher_get_state!(req);
+
+    responses::ACMEResponse::new_error(internal_server_error!(), &db, &conf).await
 }

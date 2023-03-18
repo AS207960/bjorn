@@ -4,47 +4,47 @@ use chrono::prelude::*;
 use foreign_types::ForeignTypeRef;
 
 lazy_static! {
-    static ref MD2_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.2").unwrap();
-    static ref MD5_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.4").unwrap();
-    static ref SHA1_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.5").unwrap();
-    static ref DSA_WITH_SHA1: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10040.4.3").unwrap();
-    static ref DSA_WITH_SHA224: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.3.1").unwrap();
-    static ref DSA_WITH_SHA256: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.3.2").unwrap();
-    static ref ECDSA_WITH_SHA1: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.1").unwrap();
-    static ref ECDSA_WITH_SHA224: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.1").unwrap();
-    static ref ECDSA_WITH_SHA256: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.2").unwrap();
-    static ref ECDSA_WITH_SHA384: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.3").unwrap();
-    static ref ECDSA_WITH_SHA512: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.4").unwrap();
-    static ref SHA256_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.14").unwrap();
-    static ref SHA224_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.11").unwrap();
-    static ref SHA384_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.12").unwrap();
-    static ref SHA512_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.13").unwrap();
+    static ref MD2_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.2").unwrap();
+    static ref MD5_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.4").unwrap();
+    static ref SHA1_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.5").unwrap();
+    static ref DSA_WITH_SHA1: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10040.4.3").unwrap();
+    static ref DSA_WITH_SHA224: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.3.1").unwrap();
+    static ref DSA_WITH_SHA256: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.3.2").unwrap();
+    static ref ECDSA_WITH_SHA1: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.1").unwrap();
+    static ref ECDSA_WITH_SHA224: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.1").unwrap();
+    static ref ECDSA_WITH_SHA256: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.2").unwrap();
+    static ref ECDSA_WITH_SHA384: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.3").unwrap();
+    static ref ECDSA_WITH_SHA512: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.10045.4.3.4").unwrap();
+    static ref SHA256_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.14").unwrap();
+    static ref SHA224_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.11").unwrap();
+    static ref SHA384_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.12").unwrap();
+    static ref SHA512_WITH_RSA_ENCRYPTION: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.13").unwrap();
 
-    static ref ID_MD2: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.2.2").unwrap();
-    static ref ID_MD5: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.2.840.113549.2.5").unwrap();
-    static ref ID_SHA1: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.14.3.2.26").unwrap();
-    static ref ID_SHA224: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.4").unwrap();
-    static ref ID_SHA256: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.1").unwrap();
-    static ref ID_SHA384: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.2").unwrap();
-    static ref ID_SHA512: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.3").unwrap();
-    static ref ID_SHA512_224: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.5").unwrap();
-    static ref ID_SHA512_256: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.6").unwrap();
-    static ref ID_SHA3_224: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.7").unwrap();
-    static ref ID_SHA3_256: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.8").unwrap();
-    static ref ID_SHA3_384: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.9").unwrap();
-    static ref ID_SHA3_512: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.10").unwrap();
+    static ref ID_MD2: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.2.2").unwrap();
+    static ref ID_MD5: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.2.840.113549.2.5").unwrap();
+    static ref ID_SHA1: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.14.3.2.26").unwrap();
+    static ref ID_SHA224: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.4").unwrap();
+    static ref ID_SHA256: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.1").unwrap();
+    static ref ID_SHA384: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.2").unwrap();
+    static ref ID_SHA512: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.3").unwrap();
+    static ref ID_SHA512_224: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.5").unwrap();
+    static ref ID_SHA512_256: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.6").unwrap();
+    static ref ID_SHA3_224: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.7").unwrap();
+    static ref ID_SHA3_256: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.8").unwrap();
+    static ref ID_SHA3_384: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.9").unwrap();
+    static ref ID_SHA3_512: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.16.840.1.101.3.4.2.10").unwrap();
 
-    static ref ID_PKIX_OCSP_BASIC: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.1").unwrap();
-    static ref ID_PKIX_OCSP_NONCE: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.2").unwrap();
-    static ref ID_PKIX_OCSP_CRL: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.3").unwrap();
-    static ref ID_PKIX_OCSP_RESPONSE: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.4").unwrap();
-    static ref ID_PKIX_OCSP_NOCHECK: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.5").unwrap();
-    static ref ID_PKIX_OCSP_ARCHIVE_CUTOFF: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.6").unwrap();
-    static ref ID_PKIX_OCSP_SERVICE_LOCATOR: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.7").unwrap();
-    static ref ID_PKIX_OCSP_PREF_SIG_ALGS: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.8").unwrap();
-    static ref ID_PKIX_OCSP_EXTENDED_REVOKE: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.9").unwrap();
+    static ref ID_PKIX_OCSP_BASIC: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.1").unwrap();
+    static ref ID_PKIX_OCSP_NONCE: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.2").unwrap();
+    static ref ID_PKIX_OCSP_CRL: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.3").unwrap();
+    static ref ID_PKIX_OCSP_RESPONSE: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.4").unwrap();
+    static ref ID_PKIX_OCSP_NOCHECK: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.5").unwrap();
+    static ref ID_PKIX_OCSP_ARCHIVE_CUTOFF: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.6").unwrap();
+    static ref ID_PKIX_OCSP_SERVICE_LOCATOR: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.7").unwrap();
+    static ref ID_PKIX_OCSP_PREF_SIG_ALGS: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.8").unwrap();
+    static ref ID_PKIX_OCSP_EXTENDED_REVOKE: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("1.3.6.1.5.5.7.48.1.9").unwrap();
 
-    static ref ID_CE_INVALIDITY_DATE: asn1::ObjectIdentifier<'static> = asn1::ObjectIdentifier::from_string("2.5.29.24").unwrap();
+    static ref ID_CE_INVALIDITY_DATE: asn1::ObjectIdentifier = asn1::ObjectIdentifier::from_string("2.5.29.24").unwrap();
 }
 
 #[derive(Debug)]
@@ -195,7 +195,7 @@ pub enum HashAlgorithm {
 }
 
 impl HashAlgorithm {
-    fn oid(&self) -> asn1::ObjectIdentifier<'_> {
+    fn oid(&self) -> asn1::ObjectIdentifier {
         match self {
             Self::MD2 => ID_MD2.clone(),
             Self::MD5 => ID_MD5.clone(),
@@ -213,7 +213,7 @@ impl HashAlgorithm {
         }
     }
 
-    fn from_oid(oid: &asn1::ObjectIdentifier<'_>) -> Option<HashAlgorithm> {
+    fn from_oid(oid: &asn1::ObjectIdentifier) -> Option<HashAlgorithm> {
         if oid.eq(&ID_MD2) {
             Some(HashAlgorithm::MD2)
         } else if oid.eq(&ID_MD5) {
@@ -266,7 +266,7 @@ pub enum SignatureAlgorithm {
 }
 
 impl SignatureAlgorithm {
-    fn from_oid(oid: &asn1::ObjectIdentifier<'_>) -> Option<SignatureAlgorithm> {
+    fn from_oid(oid: &asn1::ObjectIdentifier) -> Option<SignatureAlgorithm> {
         if oid.eq(&MD2_WITH_RSA_ENCRYPTION) {
             Some(SignatureAlgorithm::RsaWithMd2)
         } else if oid.eq(&MD5_WITH_RSA_ENCRYPTION) {
@@ -586,8 +586,8 @@ pub fn parse_ocsp_req(req: &[u8]) -> Result<OCSPRequest<'_>, OCSPResponse> {
 pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
     let response_bytes = resp.response.as_ref().map(|r| match r {
         OCSPResponseType::BasicResponse(br) => {
-            let mut certs = vec![br.issuer.signer.cert.to_der().unwrap()];
-            if let Some(chain) = &br.issuer.signer.chain {
+            let mut certs = vec![br.issuer.signer.cert.as_ref().expect("No signing cert").to_der().unwrap()];
+            if let Some(chain) = &br.issuer.signer.ca {
                 for chain_cert in chain.iter() {
                     certs.push(chain_cert.to_der().unwrap());
                 }
@@ -598,14 +598,14 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
 
             let mut extensions = vec![proto::ExtensionWrite {
                 extension_id: ID_PKIX_OCSP_EXTENDED_REVOKE.clone(),
-                extension_value: proto::CowBytes(std::borrow::Cow::Owned(asn1::write_single(&()))),
+                extension_value: proto::CowBytes(std::borrow::Cow::Owned(asn1::write_single(&()).unwrap())),
                 critical: false,
             }];
 
             if let Some(nonce_ext) = br.nonce {
                 extensions.push(proto::ExtensionWrite {
                     extension_id: ID_PKIX_OCSP_NONCE.clone(),
-                    extension_value: proto::CowBytes(std::borrow::Cow::Owned(asn1::write_single(&nonce_ext))),
+                    extension_value: proto::CowBytes(std::borrow::Cow::Owned(asn1::write_single(&nonce_ext).unwrap())),
                     critical: false,
                 });
             }
@@ -617,7 +617,7 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     single_extensions.push(proto::ExtensionWrite {
                         extension_id: ID_PKIX_OCSP_ARCHIVE_CUTOFF.clone(),
                         extension_value: proto::CowBytes(std::borrow::Cow::Owned(
-                            asn1::write_single(&asn1::GeneralizedTime::new(archive_cutoff))
+                            asn1::write_single(&asn1::GeneralizedTime::new(archive_cutoff).unwrap()).unwrap()
                         )),
                         critical: false,
                     })
@@ -627,7 +627,7 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     single_extensions.push(proto::ExtensionWrite {
                         extension_id: ID_CE_INVALIDITY_DATE.clone(),
                         extension_value: proto::CowBytes(std::borrow::Cow::Owned(
-                            asn1::write_single(&asn1::GeneralizedTime::new(invalidity_date))
+                            asn1::write_single(&asn1::GeneralizedTime::new(invalidity_date).unwrap()).unwrap()
                         )),
                         critical: false,
                     })
@@ -646,13 +646,13 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     cert_status: match &sr.cert_status {
                         CertStatus::Good => proto::CertStatus::Good(()),
                         CertStatus::Revoked(r) => proto::CertStatus::Revoked(proto::RevokedInfo {
-                            revocation_time: asn1::GeneralizedTime::new(r.revocation_time),
+                            revocation_time: asn1::GeneralizedTime::new(r.revocation_time).unwrap(),
                             revocation_reason: r.revocation_reason.map(|reason| proto::Enumerated::new(reason as u32)),
                         }),
                         CertStatus::Unknown => proto::CertStatus::Unknown(()),
                     },
-                    this_update: asn1::GeneralizedTime::new(sr.this_update),
-                    next_update: sr.next_update.map(asn1::GeneralizedTime::new),
+                    this_update: asn1::GeneralizedTime::new(sr.this_update).unwrap(),
+                    next_update: sr.next_update.map(|n| asn1::GeneralizedTime::new(n).unwrap()),
                     single_extensions: if single_extensions.is_empty() {
                         None
                     } else {
@@ -664,7 +664,7 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
             let tbs_response_data = proto::ResponseData {
                 version: proto::Version::V1 as u8,
                 responder_id: proto::ResponderID::ByHash(&br.issuer.pub_key_sha1),
-                produced_at: asn1::GeneralizedTime::new(br.produced_at),
+                produced_at: asn1::GeneralizedTime::new(br.produced_at).unwrap(),
                 responses: proto::CowSequenceOfWriter(std::borrow::Cow::Owned(responses)),
                 response_extensions: if extensions.is_empty() {
                     None
@@ -673,14 +673,14 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                 },
             };
 
-            let tbs_response_bytes = asn1::write_single(&tbs_response_data);
-            let (sig_alg, message_digest) = match br.issuer.signer.pkey.id() {
+            let tbs_response_bytes = asn1::write_single(&tbs_response_data).unwrap();
+            let (sig_alg, message_digest) = match br.issuer.signer.pkey.as_ref().expect("No signing key").id() {
                 openssl::pkey::Id::RSA => (SHA512_WITH_RSA_ENCRYPTION.clone(), openssl::hash::MessageDigest::sha512()),
                 openssl::pkey::Id::DSA => (DSA_WITH_SHA256.clone(), openssl::hash::MessageDigest::sha256()),
                 openssl::pkey::Id::EC => (ECDSA_WITH_SHA512.clone(), openssl::hash::MessageDigest::sha512()),
                 _ => unimplemented!()
             };
-            let mut signer = openssl::sign::Signer::new(message_digest, &br.issuer.signer.pkey).unwrap();
+            let mut signer = openssl::sign::Signer::new(message_digest, &br.issuer.signer.pkey.as_ref().unwrap()).unwrap();
             let signature = signer.sign_oneshot_to_vec(&tbs_response_bytes).unwrap();
 
             (ID_PKIX_OCSP_BASIC.clone(), asn1::write_single(&proto::BasicOCSPResponse {
@@ -693,7 +693,7 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     value: &signature,
                 },
                 certs: Some(proto::CowSequenceOfWriter(std::borrow::Cow::Owned(certs_tlv))),
-            }))
+            }).unwrap())
         }
     });
 
@@ -708,5 +708,5 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
         },
     };
 
-    asn1::write_single(&out_resp)
+    asn1::write_single(&out_resp).unwrap()
 }

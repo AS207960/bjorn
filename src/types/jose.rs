@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use base64::prelude::*;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FlattenedJWS {
@@ -78,16 +79,16 @@ impl TryFrom<&openssl::pkey::PKey<openssl::pkey::Public>> for JWK {
 
                 ("EC", JWKType::EC {
                     crv,
-                    x: base64::encode_config(x.to_vec(), base64::URL_SAFE_NO_PAD),
-                    y: base64::encode_config(y.to_vec(), base64::URL_SAFE_NO_PAD),
+                    x: BASE64_URL_SAFE_NO_PAD.encode(x.to_vec()),
+                    y: BASE64_URL_SAFE_NO_PAD.encode(y.to_vec()),
                 })
             },
             openssl::pkey::Id::RSA => {
                 let rsa_key = from.rsa().unwrap();
 
                 ("RSA", JWKType::RSA {
-                    n: base64::encode_config(rsa_key.n().to_vec(), base64::URL_SAFE_NO_PAD),
-                    e: base64::encode_config(rsa_key.e().to_vec(), base64::URL_SAFE_NO_PAD),
+                    n: BASE64_URL_SAFE_NO_PAD.encode(rsa_key.n().to_vec()),
+                    e: BASE64_URL_SAFE_NO_PAD.encode(rsa_key.e().to_vec()),
                 })
             },
             _ => unimplemented!()
@@ -116,11 +117,11 @@ impl TryFrom<&JWK> for openssl::pkey::PKey<openssl::pkey::Public> {
                             "P-521" => openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::SECP521R1).unwrap(),
                             o => return Err(format!("'{}' is not a supported curve", o))
                         };
-                        let x = match base64::decode_config(x, base64::URL_SAFE_NO_PAD) {
+                        let x = match BASE64_URL_SAFE_NO_PAD.decode(x) {
                             Ok(v) => v,
                             Err(err) => return Err(format!("Invalid x parameter: {}", err))
                         };
-                        let y = match base64::decode_config(y, base64::URL_SAFE_NO_PAD) {
+                        let y = match BASE64_URL_SAFE_NO_PAD.decode(y) {
                             Ok(v) => v,
                             Err(err) => return Err(format!("Invalid y parameter: {}", err))
                         };
@@ -143,11 +144,11 @@ impl TryFrom<&JWK> for openssl::pkey::PKey<openssl::pkey::Public> {
             },
             "RSA" => match &from.params {
                 JWKType::RSA { n, e } => {
-                    let n = match base64::decode_config(n, base64::URL_SAFE_NO_PAD) {
+                    let n = match BASE64_URL_SAFE_NO_PAD.decode(n) {
                         Ok(v) => v,
                         Err(err) => return Err(format!("Invalid n parameter: {}", err))
                     };
-                    let e = match base64::decode_config(e, base64::URL_SAFE_NO_PAD) {
+                    let e = match BASE64_URL_SAFE_NO_PAD.decode(e) {
                         Ok(v) => v,
                         Err(err) => return Err(format!("Invalid e parameter: {}", err))
                     };

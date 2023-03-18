@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use std::io::Read;
+use base64::prelude::*;
 
 mod proto;
 mod types;
@@ -16,8 +16,8 @@ pub struct OCSPResponse {
     next_update: Option<DateTime<Utc>>,
 }
 
-impl<'r> rocket::response::Responder<'r> for OCSPResponse {
-    fn respond_to(self, _req: &rocket::request::Request<'_>) -> rocket::response::Result<'r> {
+impl<'r> rocket::response::Responder<'r, 'static> for OCSPResponse {
+    fn respond_to(self, _req: &'r rocket::request::Request<'_>) -> rocket::response::Result<'static> {
         let mut builder = rocket::response::Response::build();
 
         builder.header(rocket::http::ContentType::new("application", "ocsp-response"));
@@ -36,7 +36,7 @@ impl<'r> rocket::response::Responder<'r> for OCSPResponse {
             builder.raw_header("Expires", next_update.to_rfc2822());
         }
 
-        builder.sized_body(std::io::Cursor::new(self.value));
+        builder.sized_body(self.value.len(), std::io::Cursor::new(self.value));
 
         builder.ok()
     }
@@ -67,8 +67,8 @@ impl From<types::OCSPResponse<'_>> for OCSPResponse {
 }
 
 #[get("/")]
-pub fn index() -> rocket::response::content::Html<&'static str> {
-    rocket::response::content::Html(HOME_PAGE)
+pub fn index() -> rocket::response::content::RawHtml<&'static str> {
+    rocket::response::content::RawHtml(HOME_PAGE)
 }
 
 #[head("/<_request>")]
@@ -77,8 +77,8 @@ pub fn ocsp_head(_request: String) -> rocket::http::Status {
 }
 
 #[get("/<request>")]
-pub fn ocsp_get(request: String, ocsp_issuers: rocket::State<issuers::OCSPIssuers>) -> Result<OCSPResponse, rocket::http::Status> {
-    let ocsp_req = match base64::decode_config(&request, base64::URL_SAFE) {
+pub fn ocsp_get(request: String, ocsp_issuers: &rocket::State<issuers::OCSPIssuers<'_>>) -> Result<OCSPResponse, rocket::http::Status> {
+    let ocsp_req = match BASE64_URL_SAFE.decode(&request) {
         Ok(r) => r,
         Err(_) => return Err(rocket::http::Status::BadRequest)
     };
@@ -87,19 +87,16 @@ pub fn ocsp_get(request: String, ocsp_issuers: rocket::State<issuers::OCSPIssuer
 }
 
 #[post("/", format = "application/ocsp-request", data = "<request>")]
-pub fn ocsp_post(request: rocket::data::Data, ocsp_issuers: rocket::State<issuers::OCSPIssuers>) -> Result<OCSPResponse, rocket::http::Status> {
+pub async fn ocsp_post(request: rocket::data::Data<'_>, ocsp_issuers: &rocket::State<issuers::OCSPIssuers<'_>>) -> Result<OCSPResponse, rocket::http::Status> {
     const LIMIT: usize = 4096;
 
-    let mut ocsp_req = vec![];
-    let mut request = request.open().take((LIMIT + 1) as u64);
-
-    match request.read_to_end(&mut ocsp_req) {
-        Ok(r) => {
-            if r == LIMIT + 1 {
-                return Err(rocket::http::Status::PayloadTooLarge);
-            }
-        }
+    let ocsp_req = match request.open(LIMIT * rocket::data::ByteUnit::B).into_bytes().await {
+        Ok(r) => r,
         Err(_) => return Err(rocket::http::Status::InternalServerError)
+    };
+
+    if !ocsp_req.is_complete() {
+        return Err(rocket::http::Status::PayloadTooLarge);
     }
 
     Ok(processing::handle_ocsp(&ocsp_req, &ocsp_issuers).into())

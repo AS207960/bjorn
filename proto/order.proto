@@ -91,6 +91,7 @@ message KeyValidationRequest {
   string account_thumbprint = 2;
   Identifier identifier = 3;
   google.protobuf.StringValue account_uri = 4;
+  bytes hs_private_key = 5;
 }
 
 message ValidationResult {

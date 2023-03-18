@@ -1,9 +1,11 @@
+use base64::prelude::*;
+
 pub fn uuid_as_b64(uuid: &uuid::Uuid) -> String {
-    base64::encode_config(uuid.as_bytes(), base64::URL_SAFE_NO_PAD)
+    BASE64_URL_SAFE_NO_PAD.encode(uuid.as_bytes())
 }
 
 pub fn b64_to_uuid(b64: &str) -> Option<uuid::Uuid> {
-    let uuid_bytes = match base64::decode_config(b64, base64::URL_SAFE_NO_PAD) {
+    let uuid_bytes = match BASE64_URL_SAFE_NO_PAD.decode(b64) {
         Ok(n) => n,
         Err(_) => {
             return None;

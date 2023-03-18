@@ -6,25 +6,20 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct ReplayNonce<R>(pub R);
+pub struct ReplayNonce<R> {
+    nonce: String,
+    responder: R
+}
 
-impl<'r, R: rocket::response::Responder<'r>> rocket::response::Responder<'r> for ReplayNonce<R> {
-    fn respond_to(self, request: &rocket::request::Request<'_>) -> rocket::response::Result<'r> {
-        let mut result = self.0.respond_to(request)?;
-
-        let db = match request.guard::<crate::DBConn>() {
-            rocket::request::Outcome::Success(v) => v,
-            rocket::request::Outcome::Failure(e) => return Err(e.0),
-            rocket::request::Outcome::Forward(_) => unreachable!()
-        };
-
+impl<R> ReplayNonce<R> {
+    pub async fn new_nonce(db: &crate::DBConn, responder: R) -> Result<Self, rocket::http::Status> {
         let new_nonce = super::models::Nonce {
             nonce: uuid::Uuid::new_v4(),
             issued_at: chrono::Utc::now(),
         };
-        let nonce = match diesel::insert_into(super::schema::nonces::table)
+        let nonce = match db.run(move |c| diesel::insert_into(super::schema::nonces::table)
             .values(&new_nonce)
-            .get_result::<super::models::Nonce>(&db.0) {
+            .get_result::<super::models::Nonce>(c)).await {
             Err(err) => {
                 error!("Error inserting new nonce: {}", err);
                 return Err(rocket::http::Status::InternalServerError);
@@ -33,12 +28,23 @@ impl<'r, R: rocket::response::Responder<'r>> rocket::response::Responder<'r> for
         };
 
         let nonce = crate::util::uuid_as_b64(&nonce.nonce);
-        result.set_raw_header("Replay-Nonce", nonce);
+
+        Ok(Self {
+            nonce,
+            responder
+        })
+    }
+}
+
+impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a>> rocket::response::Responder<'r, 'a> for ReplayNonce<R> {
+    fn respond_to(self, request: &'r rocket::request::Request<'_>) -> rocket::response::Result<'a> {
+        let mut result = self.responder.respond_to(request)?;
+        result.set_raw_header("Replay-Nonce", self.nonce);
         Ok(result)
     }
 }
 
-pub(crate) fn verify_nonce(nonce: &str, db: &crate::DBConn) -> crate::acme::ACMEResult<()> {
+pub(crate) async fn verify_nonce(nonce: &str, db: &crate::DBConn) -> crate::acme::ACMEResult<()> {
     let nonce_uuid = match crate::util::b64_to_uuid(&nonce) {
         Some(v) => v,
         None => {
@@ -54,9 +60,9 @@ pub(crate) fn verify_nonce(nonce: &str, db: &crate::DBConn) -> crate::acme::ACME
         }
     };
 
-    let affected = match diesel::delete(super::schema::nonces::dsl::nonces.filter(
+    let affected = match db.run(move |c| diesel::delete(super::schema::nonces::dsl::nonces.filter(
         super::schema::nonces::dsl::nonce.eq(&nonce_uuid))
-    ).execute(&db.0) {
+    ).execute(c)).await {
         Ok(v) => v,
         Err(err) => {
             error!("Error checking nonce validitiy: {}", err);

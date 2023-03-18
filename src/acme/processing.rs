@@ -1,92 +1,10 @@
 use diesel::prelude::*;
 use std::convert::TryInto;
 
-pub(crate) struct InnerBlockingOrderClient {
-    client: crate::cert_order::ca_client::CaClient<tonic::transport::Channel>,
-    rt: tokio::runtime::Runtime,
-}
+pub type OrderClient = crate::cert_order::ca_client::CaClient<tonic::transport::Channel>;
 
-impl InnerBlockingOrderClient {
-    pub(crate) fn validate_eab(&mut self, request: impl tonic::IntoRequest<crate::cert_order::ValidateEabRequest>)
-                    -> Result<tonic::Response<crate::cert_order::ValidateEabResponse>, tonic::Status> {
-        self.rt.block_on(self.client.validate_eab(request))
-    }
-
-    pub(crate) fn create_order(&mut self, request: impl tonic::IntoRequest<crate::cert_order::CreateOrderRequest>)
-                    -> Result<tonic::Response<crate::cert_order::OrderResponse>, tonic::Status> {
-        self.rt.block_on(self.client.create_order(request))
-    }
-
-    pub(crate) fn get_order(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
-                    -> Result<tonic::Response<crate::cert_order::Order>, tonic::Status> {
-        self.rt.block_on(self.client.get_order(request))
-    }
-
-    pub(crate) fn finalize_order(&mut self, request: impl tonic::IntoRequest<crate::cert_order::FinalizeOrderRequest>)
-                    -> Result<tonic::Response<crate::cert_order::OrderResponse>, tonic::Status> {
-        self.rt.block_on(self.client.finalize_order(request))
-    }
-
-    pub(crate) fn create_authorization(&mut self, request: impl tonic::IntoRequest<crate::cert_order::CreateAuthorizationRequest>)
-                    -> Result<tonic::Response<crate::cert_order::AuthorizationResponse>, tonic::Status> {
-        self.rt.block_on(self.client.create_authorization(request))
-    }
-
-    pub(crate) fn get_authorization(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
-                    -> Result<tonic::Response<crate::cert_order::Authorization>, tonic::Status> {
-        self.rt.block_on(self.client.get_authorization(request))
-    }
-
-    pub(crate) fn deactivate_authorization(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
-                    -> Result<tonic::Response<crate::cert_order::AuthorizationResponse>, tonic::Status> {
-        self.rt.block_on(self.client.deactivate_authorization(request))
-    }
-
-    pub(crate) fn get_challenge(&mut self, request: impl tonic::IntoRequest<crate::cert_order::ChallengeIdRequest>)
-                    -> Result<tonic::Response<crate::cert_order::Challenge>, tonic::Status> {
-        self.rt.block_on(self.client.get_challenge(request))
-    }
-
-    pub(crate) fn complete_challenge(&mut self, request: impl tonic::IntoRequest<crate::cert_order::CompleteChallengeRequest>)
-                    -> Result<tonic::Response<crate::cert_order::ChallengeResponse>, tonic::Status> {
-        self.rt.block_on(self.client.complete_challenge(request))
-    }
-
-    pub(crate) fn get_certificate(&mut self, request: impl tonic::IntoRequest<crate::cert_order::IdRequest>)
-                    -> Result<tonic::Response<crate::cert_order::CertificateChainResponse>, tonic::Status> {
-        self.rt.block_on(self.client.get_certificate(request))
-    }
-
-    pub(crate) fn revoke_certificate(&mut self, request: impl tonic::IntoRequest<crate::cert_order::RevokeCertRequest>)
-                    -> Result<tonic::Response<crate::cert_order::RevokeCertResponse>, tonic::Status> {
-        self.rt.block_on(self.client.revoke_certificate(request))
-    }
-}
-
-pub struct BlockingOrderClient(std::sync::Arc<std::sync::Mutex<InnerBlockingOrderClient>>);
-
-impl BlockingOrderClient {
-    pub fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: std::convert::TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>
-    {
-        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-        let client = rt.block_on(crate::cert_order::ca_client::CaClient::connect(dst))?;
-
-        Ok(Self(std::sync::Arc::new(std::sync::Mutex::new(InnerBlockingOrderClient {
-            client,
-            rt,
-        }))))
-    }
-
-    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, InnerBlockingOrderClient> {
-        self.0.lock().unwrap()
-    }
-}
-
-pub(crate) fn verify_eab(
-    client: &BlockingOrderClient, eab: &crate::types::jose::FlattenedJWS, req_url: &str,
+pub(crate) async fn verify_eab(
+    client: &mut OrderClient, eab: &crate::types::jose::FlattenedJWS, req_url: &str,
     acct_key: &openssl::pkey::PKeyRef<openssl::pkey::Public>,
 ) -> super::ACMEResult<String> {
     let (eab_header, eab_payload_bytes, eab_signature_bytes) = match super::jws::start_decode_jws(&eab) {
@@ -180,14 +98,12 @@ pub(crate) fn verify_eab(
         })
     };
 
-    let mut locked_client = client.0.lock().unwrap();
-    let eab_result = crate::try_db_result!(locked_client.validate_eab(crate::cert_order::ValidateEabRequest {
+    let eab_result = crate::try_db_result!(client.validate_eab(crate::cert_order::ValidateEabRequest {
             kid: eab_id.clone(),
             signature_method,
             signed_data: format!("{}.{}", eab.protected, eab.payload).into_bytes(),
             signature: eab_signature_bytes,
-        }), "Failed to check EAB: {}")?;
-    std::mem::drop(locked_client);
+        }).await, "Failed to check EAB: {}")?;
 
     if !eab_result.get_ref().valid {
         return Err(crate::types::error::Error {
@@ -298,8 +214,8 @@ pub(crate) fn unwrap_chall_response(resp: crate::cert_order::ChallengeResponse) 
     }
 }
 
-pub(crate) fn create_order(
-    client: &BlockingOrderClient, db: &crate::DBConn,
+pub(crate) async fn create_order(
+    client: &mut OrderClient, db: &crate::DBConn,
     order: &crate::types::order::OrderCreate, account: &crate::acme::Account,
 ) -> crate::acme::ACMEResult<(super::models::Order, crate::cert_order::Order)> {
     let mut errors = vec![];
@@ -333,15 +249,13 @@ pub(crate) fn create_order(
 
     crate::util::error_list_to_result(errors, "Multiple errors make this order invalid".to_string())?;
 
-    let mut locked_client = client.lock();
-    let order_result = crate::try_db_result!(locked_client.create_order(crate::cert_order::CreateOrderRequest {
+    let order_result = crate::try_db_result!(client.create_order(crate::cert_order::CreateOrderRequest {
         identifiers,
         not_before: crate::util::chrono_to_proto(order.not_before),
         not_after: crate::util::chrono_to_proto(order.not_after),
         account_id: account.inner.id.to_string(),
         eab_id: account.inner.eab_id.clone(),
-    }), "Failed to create order: {}")?;
-    std::mem::drop(locked_client);
+    }).await, "Failed to create order: {}")?;
 
     let ca_order = unwrap_order_response(order_result.into_inner())?;
 
@@ -351,17 +265,18 @@ pub(crate) fn create_order(
         ca_id: ca_order.id.clone(),
     };
 
-    crate::try_db_result!(
+    let db_order = crate::try_db_result!(db.run(move |c|
         diesel::insert_into(super::schema::orders::dsl::orders)
-        .values(&db_order).execute(&db.0),
+            .values(&db_order).get_result(c)
+    ).await,
         "Unable to save order to database: {}"
     )?;
 
     Ok((db_order, ca_order))
 }
 
-pub(crate) fn create_authz(
-    client: &BlockingOrderClient, db: &crate::DBConn,
+pub(crate) async fn create_authz(
+    client: &mut OrderClient, db: &crate::DBConn,
     authz: &crate::types::authorization::AuthorizationCreate, account: &crate::acme::Account,
 ) -> crate::acme::ACMEResult<(super::models::Authorization, crate::cert_order::Authorization)> {
     let grpc_id_type = match crate::types::identifier::Type::from_str(&authz.identifier.id_type) {
@@ -385,13 +300,11 @@ pub(crate) fn create_authz(
         identifier: authz.identifier.value.clone(),
     };
 
-    let mut locked_client = client.lock();
-    let authz_result = crate::try_db_result!(locked_client.create_authorization(crate::cert_order::CreateAuthorizationRequest {
+    let authz_result = crate::try_db_result!(client.create_authorization(crate::cert_order::CreateAuthorizationRequest {
         identifier: Some(identifier),
         account_id: account.inner.id.to_string(),
         eab_id: account.inner.eab_id.clone(),
-    }), "Failed to create authorization: {}")?;
-    std::mem::drop(locked_client);
+    }).await, "Failed to create authorization: {}")?;
 
     let ca_authz = unwrap_authz_response(authz_result.into_inner())?;
 
@@ -401,9 +314,10 @@ pub(crate) fn create_authz(
         ca_id: ca_authz.id.clone(),
     };
 
-    crate::try_db_result!(
+    let db_authz = crate::try_db_result!(db.run(move |c|
         diesel::insert_into(super::schema::authorizations::dsl::authorizations)
-        .values(&db_authz).execute(&db.0),
+            .values(&db_authz).get_result(c)
+    ).await,
         "Unable to save authorization to database: {}"
     )?;
 
