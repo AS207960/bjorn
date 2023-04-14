@@ -1,5 +1,3 @@
-#![feature(decl_macro)]
-#![feature(exhaustive_patterns)]
 #[macro_use]
 extern crate rocket;
 #[macro_use]

@@ -38,6 +38,7 @@ impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a> > rocket::response::Resp
                 r.set_raw_header("Content-Type", "application/problem+json");
                 Ok(r)
             }
+            InnerACMEResponse::_Phantom1(_, _) | InnerACMEResponse::_Phantom2(_, _) => unreachable!()
         }
     }
 }
