@@ -1,7 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(decl_macro)]
-#![feature(unsized_locals)]
-
 #[macro_use]
 extern crate rocket;
 
