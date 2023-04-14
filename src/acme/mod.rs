@@ -454,7 +454,7 @@ impl rocket::fairing::Fairing for ConfigFairing {
     }
 }
 
-embed_migrations!("./migrations/acme");
+pub const MIGRATIONS: diesel_migrations::EmbeddedMigrations = embed_migrations!("./migrations/acme");
 
 pub struct DBMigrationFairing();
 
@@ -468,6 +468,8 @@ impl rocket::fairing::Fairing for DBMigrationFairing {
     }
 
     async fn on_ignite(&self, rocket: rocket::Rocket<rocket::Build>) -> rocket::fairing::Result {
+        use crate::diesel_migrations::MigrationHarness;
+
         let db_con = match DBConn::get_one(&rocket).await {
             Some(v) => v.0,
             None => {
@@ -478,7 +480,10 @@ impl rocket::fairing::Fairing for DBMigrationFairing {
 
 
         if let Err(e) = db_con.run(|c| {
-            embedded_migrations::run_with_output(c, &mut std::io::stdout())
+            match c.run_pending_migrations(MIGRATIONS) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e)
+            }
         }).await {
             error!("Unable to run migrations: {}", e);
             return Err(rocket);
@@ -812,7 +817,7 @@ pub async fn new_account_post(
     }
 
     let account: models::Account = try_result!(try_db_result!(db.run(move |c| {
-        c.transaction::<_, diesel::result::Error, _>(|| {
+        c.transaction::<_, diesel::result::Error, _>(|c| {
             let a = diesel::insert_into(schema::accounts::dsl::accounts)
                 .values(&account)
                 .get_result(c)?;
@@ -931,7 +936,7 @@ pub async fn account_post(
 
         let acct_key_id = acct_key.inner.id;
         try_result!(try_db_result!(db.run(move |c| {
-            c.transaction::<_, diesel::result::Error, _>(|| {
+            c.transaction::<_, diesel::result::Error, _>(|c| {
                 diesel::delete(schema::account_contacts::dsl::account_contacts)
                     .filter(schema::account_contacts::dsl::account.eq(&acct_key_id))
                     .execute(c)?;

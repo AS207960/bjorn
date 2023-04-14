@@ -4,8 +4,7 @@ use base64::prelude::*;
 use futures::StreamExt;
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[primary_key(nonce)]
-#[table_name = "nonces"]
+#[diesel(primary_key(nonce), table_name = nonces)]
 pub struct Nonce {
     pub nonce: uuid::Uuid,
     pub issued_at: chrono::DateTime<chrono::Utc>,
@@ -19,7 +18,7 @@ pub enum AccountStatus {
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "accounts"]
+#[diesel(table_name = accounts)]
 pub struct Account {
     pub id: uuid::Uuid,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -38,7 +37,7 @@ pub enum AccountContactType {
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "account_contacts"]
+#[diesel(table_name = account_contacts)]
 pub struct AccountContact {
     pub id: uuid::Uuid,
     pub account: uuid::Uuid,
@@ -130,7 +129,7 @@ pub(crate) fn parse_contacts(contacts: &[&str], account_id: &uuid::Uuid) -> crat
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "orders"]
+#[diesel(table_name = orders)]
 pub struct Order {
     pub id: uuid::Uuid,
     pub account: uuid::Uuid,
@@ -214,7 +213,7 @@ impl Order {
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "authorizations"]
+#[diesel(table_name = authorizations)]
 pub struct Authorization {
     pub id: uuid::Uuid,
     pub account: uuid::Uuid,
@@ -300,7 +299,7 @@ impl Authorization {
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "certificates"]
+#[diesel(table_name = certificates)]
 pub struct Certificate {
     pub id: uuid::Uuid,
     pub ca_id: Vec<u8>,
@@ -313,7 +312,7 @@ impl Certificate {
 }
 
 #[derive(Insertable, Queryable, Identifiable, Debug)]
-#[table_name = "tos_agreement_tokens"]
+#[diesel(table_name = tos_agreement_tokens)]
 pub struct ToSAgreementToken {
     pub id: uuid::Uuid,
     pub account: uuid::Uuid,

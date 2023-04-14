@@ -1,8 +1,8 @@
 [package]
 name = "bjorn-acme"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Q Misell <q@as207960.net>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/as207960/bjorn"
@@ -13,37 +13,40 @@ strip = true
 opt-level = "z"
 lto = true
 
+[lib]
+name = "bjorn"
+
 [dependencies]
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
-rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
-rocket_sync_db_pools = { version = "0.1.0-rc.2", features = ["diesel_postgres_pool"] }
+rocket_dyn_templates = { version = "0.1.0-rc.3", features = ["tera"] }
+rocket_sync_db_pools = { version = "0.1.0-rc.3", features = ["diesel_postgres_pool"] }
 postgres = { version = "0.19", features = ["with-chrono-0_4", "with-uuid-0_8"] }
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 base64 = "0.21.0"
 lazy_static = "1"
 tokio-openssl = "0.6"
 openssl = "0.10"
 openssl-sys = "0.9"
 log = "0.4"
-diesel = { version = "1", features = ["postgres", "uuidv07", "extras"] }
-diesel_migrations = "1"
-diesel-derive-enum = { version = "1", features = ["postgres"] }
+diesel = { version = "2", features = ["postgres", "uuid", "extras"] }
+diesel_migrations = "2"
+diesel-derive-enum = { version = "2", features = ["postgres"] }
 url = "2"
-tonic = "0.8.3"
+tonic = "0.9"
 prost = "0.11.8"
 prost-types = "0.11.8"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net"] }
 hex = "0.4"
-asn1 = "0.13.0"
+asn1 = "0.14"
 libc = "0.2"
 foreign-types = "0.3"
 pretty_env_logger = "0.4"
-trust-dns-proto = "*"
-trust-dns-resolver = "*"
+trust-dns-proto = "0.22"
+trust-dns-resolver = "0.22"
 reqwest = { version = "0.11", features = ["gzip", "brotli", "deflate"] }
 figment = "0.10"
 futures = "0.3.27"
@@ -51,4 +54,4 @@ torrosion = "0"
 hyper = "0.14.25"
 
 [build-dependencies]
-tonic-build = "0.8.4"
+tonic-build = "0.9"

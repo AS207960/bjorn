@@ -617,7 +617,14 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     single_extensions.push(proto::ExtensionWrite {
                         extension_id: ID_PKIX_OCSP_ARCHIVE_CUTOFF.clone(),
                         extension_value: proto::CowBytes(std::borrow::Cow::Owned(
-                            asn1::write_single(&asn1::GeneralizedTime::new(archive_cutoff).unwrap()).unwrap()
+                            asn1::write_single(&asn1::GeneralizedTime::new(asn1::DateTime::new(
+                                archive_cutoff.year() as u16,
+                                archive_cutoff.month() as u8,
+                                archive_cutoff.day() as u8,
+                                archive_cutoff.hour() as u8,
+                                archive_cutoff.minute() as u8,
+                                archive_cutoff.second() as u8,
+                            ).unwrap()).unwrap()).unwrap()
                         )),
                         critical: false,
                     })
@@ -627,7 +634,14 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     single_extensions.push(proto::ExtensionWrite {
                         extension_id: ID_CE_INVALIDITY_DATE.clone(),
                         extension_value: proto::CowBytes(std::borrow::Cow::Owned(
-                            asn1::write_single(&asn1::GeneralizedTime::new(invalidity_date).unwrap()).unwrap()
+                            asn1::write_single(&asn1::GeneralizedTime::new(asn1::DateTime::new(
+                                invalidity_date.year() as u16,
+                                invalidity_date.month() as u8,
+                                invalidity_date.day() as u8,
+                                invalidity_date.hour() as u8,
+                                invalidity_date.minute() as u8,
+                                invalidity_date.second() as u8,
+                            ).unwrap()).unwrap()).unwrap()
                         )),
                         critical: false,
                     })
@@ -646,13 +660,34 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
                     cert_status: match &sr.cert_status {
                         CertStatus::Good => proto::CertStatus::Good(()),
                         CertStatus::Revoked(r) => proto::CertStatus::Revoked(proto::RevokedInfo {
-                            revocation_time: asn1::GeneralizedTime::new(r.revocation_time).unwrap(),
+                            revocation_time: asn1::GeneralizedTime::new(asn1::DateTime::new(
+                                r.revocation_time.year() as u16,
+                                r.revocation_time.month() as u8,
+                                r.revocation_time.day() as u8,
+                                r.revocation_time.hour() as u8,
+                                r.revocation_time.minute() as u8,
+                                r.revocation_time.second() as u8,
+                            ).unwrap()).unwrap(),
                             revocation_reason: r.revocation_reason.map(|reason| proto::Enumerated::new(reason as u32)),
                         }),
                         CertStatus::Unknown => proto::CertStatus::Unknown(()),
                     },
-                    this_update: asn1::GeneralizedTime::new(sr.this_update).unwrap(),
-                    next_update: sr.next_update.map(|n| asn1::GeneralizedTime::new(n).unwrap()),
+                    this_update: asn1::GeneralizedTime::new(asn1::DateTime::new(
+                        sr.this_update.year() as u16,
+                        sr.this_update.month() as u8,
+                        sr.this_update.day() as u8,
+                        sr.this_update.hour() as u8,
+                        sr.this_update.minute() as u8,
+                        sr.this_update.second() as u8,
+                    ).unwrap()).unwrap(),
+                    next_update: sr.next_update.map(|n| asn1::GeneralizedTime::new(asn1::DateTime::new(
+                        n.year() as u16,
+                        n.month() as u8,
+                        n.day() as u8,
+                        n.hour() as u8,
+                        n.minute() as u8,
+                        n.second() as u8,
+                    ).unwrap()).unwrap()),
                     single_extensions: if single_extensions.is_empty() {
                         None
                     } else {
@@ -664,7 +699,14 @@ pub fn serialize_ocsp_resp(resp: &OCSPResponse) -> Vec<u8> {
             let tbs_response_data = proto::ResponseData {
                 version: proto::Version::V1 as u8,
                 responder_id: proto::ResponderID::ByHash(&br.issuer.pub_key_sha1),
-                produced_at: asn1::GeneralizedTime::new(br.produced_at).unwrap(),
+                produced_at: asn1::GeneralizedTime::new(asn1::DateTime::new(
+                    br.produced_at.year() as u16,
+                    br.produced_at.month() as u8,
+                    br.produced_at.day() as u8,
+                    br.produced_at.hour() as u8,
+                    br.produced_at.minute() as u8,
+                    br.produced_at.second() as u8,
+                ).unwrap()).unwrap(),
                 responses: proto::CowSequenceOfWriter(std::borrow::Cow::Owned(responses)),
                 response_extensions: if extensions.is_empty() {
                     None
