@@ -226,6 +226,7 @@ enum ChallengeType {
   ChallengeHTTP01 = 0;
   ChallengeDNS01 = 1;
   ChallengeTLSALPN01 = 2;
+  ChallengeOnionCSR01 = 3;
 }
 
 enum ChallengeStatus {
@@ -242,6 +243,8 @@ message Challenge {
   google.protobuf.Timestamp validated = 4;
   ErrorResponse error = 5;
   google.protobuf.StringValue token = 6;
+  bytes auth_key = 7;
+  bytes nonce = 8;
 }
 
 message CertificateChain {

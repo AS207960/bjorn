@@ -14,6 +14,10 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         None => return Err(CAAError::ServFail)
     };
 
+    if !client.ready().await {
+        return Err(CAAError::ServFail);
+    }
+
     let hs_address = match torrosion::hs::HSAddress::from_str(domain) {
         Ok(hs) => hs,
         Err(_) => return Err(CAAError::ServFail)

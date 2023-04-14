@@ -25,4 +25,4 @@ CREATE TABLE certificates (
     ca_id bytea NOT NULL UNIQUE
 );
 
-CREATE INDEX authorization_id_index on authorizations(id);
+CREATE INDEX certificaes_id_index on certificates(id);

@@ -11,7 +11,11 @@ pub struct Challenge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<super::error::Error>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>
+    pub token: Option<String>,
+    #[serde(rename = "authKey", skip_serializing_if = "Option::is_none")]
+    pub auth_key: Option<super::jose::JWK>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -22,6 +26,8 @@ pub enum Type {
     DNS01,
     #[serde(rename = "tls-alpn-01")]
     TLSALPN01,
+    #[serde(rename = "onion-csr-01")]
+    OnionCSR01
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

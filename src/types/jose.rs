@@ -53,6 +53,12 @@ pub enum JWKType {
     RSA {
         n: String,
         e: String,
+    },
+    OKP {
+        crv: String,
+        x: String,
+        #[serde(default)]
+        d: Option<String>
     }
 }
 

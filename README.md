@@ -47,19 +47,19 @@ A basic diagram of their inter-working is as follows;
 
 ## Repositry layout
 
-| Directory              | Contents                                        |
-|------------------------|-------------------------------------------------|
-| `migrations`           | SQL database migrations                         |
-| `proto`                | gRPC definitions for inter-working              |
-| `python-ca`            | Example CA backend **DO NOT USE IN PRODUCTION** |
-| `src`                  | Common Rust source code                         |
-| `src/bin/acme.rs`      | The Björn binary                                |
-| `src/acme`             | Björn specific utilities                        |
-| `src/bin/ocsp.rs`      | The Benny binary                                |
-| `src/ocsp`             | Benny specific utilities                        |
-| `src/bin/validator.rs` | The Frida binary                                |
-| `src/validator`        | Frida specific utilities                        |
-| `templates`            | Björn HTML templates                            |
+| Directory                    | Contents                                        |
+|------------------------------|-------------------------------------------------|
+| `migrations`                 | SQL database migrations                         |
+| `proto`                      | gRPC definitions for inter-working              |
+| `python-ca`                  | Example CA backend **DO NOT USE IN PRODUCTION** |
+| `src`                        | Common Rust source code                         |
+| `src/bin/bjorn-acme.rs`      | The Björn binary                                |
+| `src/acme`                   | Björn specific utilities                        |
+| `src/bin/bjorn-ocsp.rs`      | The Benny binary                                |
+| `src/ocsp`                   | Benny specific utilities                        |
+| `src/bin/bjorn-validator.rs` | The Frida binary                                |
+| `src/validator`              | Frida specific utilities                        |
+| `templates`                  | Björn HTML templates                            |
 
 ## Implemented RFCs
 

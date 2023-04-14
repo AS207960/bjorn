@@ -183,4 +183,10 @@ CT_LOGS = [{
         "start": datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0),
         "end": datetime.datetime(year=2024, month=1, day=1, hour=0, minute=0, second=0),
     },
+}, {
+    "url": "https://ct.googleapis.com/logs/solera2024",
+    "expiry_range": {
+        "start": datetime.datetime(year=2024, month=1, day=1, hour=0, minute=0, second=0),
+        "end": datetime.datetime(year=2025, month=1, day=1, hour=0, minute=0, second=0),
+    },
 }]

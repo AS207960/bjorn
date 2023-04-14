@@ -1,16 +1,17 @@
-[development]
-external_uri = "http://localhost:8000"
+[debug]
 tos_uri = "https://as207960.net/assets/docs/AS207960_T_C_s.pdf"
-tos_agreed_to_after = "2021-09-29T00:00:00Z"
+tos_agreed_to_after = "2023-03-18T00:00:00Z"
 website_uri = "https://as207960.net"
 caa_identities = ["bjorn.as207960.net"]
 ca_grpc_uri = "http://[::1]:50051"
+external_uri = "https://acme-onions.eu.ngrok.io"
+tor_storage = "./tor-storage"
 
-[[development.acme_issuers]]
+[[debug.acme_issuers]]
 cert_id = "a"
 issuer_cert_file = "python-ca/ca-certs/intermediate-crt.pem"
 
-[[development.ocsp_issuers]]
+[[debug.ocsp_issuers]]
 cert_id = "a"
 issuer_cert_file = "python-ca/ca-certs/intermediate-crt.pem"
 signer_pkcs12_file = "ocsp-signer.p12"

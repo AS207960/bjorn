@@ -1284,7 +1284,7 @@ pub async fn order_finalize_post(
 
     let existing_order = try_result!(get_order(&oid, &db, &acct_key).await, db, conf);
 
-    let csr = match BASE64_URL_SAFE.decode(&order_finalize.csr) {
+    let csr = match BASE64_URL_SAFE_NO_PAD.decode(&order_finalize.csr) {
         Ok(c) => c,
         Err(_) => {
             return responses::ACMEResponse::new_error(types::error::Error {

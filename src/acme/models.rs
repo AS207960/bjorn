@@ -256,6 +256,7 @@ impl Authorization {
                 Some(crate::cert_order::ChallengeType::ChallengeHttp01) => crate::types::challenge::Type::HTTP01,
                 Some(crate::cert_order::ChallengeType::ChallengeDns01) => crate::types::challenge::Type::DNS01,
                 Some(crate::cert_order::ChallengeType::ChallengeTlsalpn01) => crate::types::challenge::Type::TLSALPN01,
+                Some(crate::cert_order::ChallengeType::ChallengeOnionCsr01) => crate::types::challenge::Type::OnionCSR01,
                 None => return Err(crate::internal_server_error!())
             },
             url: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::challenge(
@@ -275,6 +276,25 @@ impl Authorization {
                 "Multiple errors make this challenge invalid".to_string(),
             ).err()),
             token: ca_obj.token,
+            auth_key: if ca_obj.auth_key.len() == 0 {
+                None
+            } else {
+                Some(crate::types::jose::JWK {
+                    kty: "OKP".to_string(),
+                    kid: None,
+                    alg: None,
+                    params: crate::types::jose::JWKType::OKP {
+                        crv: "Ed25519".to_string(),
+                        x: BASE64_URL_SAFE_NO_PAD.encode(ca_obj.auth_key),
+                        d: None
+                    }
+                })
+            },
+            nonce: if ca_obj.nonce.len() == 0 {
+                None
+            } else {
+                Some(BASE64_URL_SAFE_NO_PAD.encode(ca_obj.nonce))
+            },
         })
     }
 }

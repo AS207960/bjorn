@@ -135,7 +135,7 @@ class CAServicer(order_pb2_grpc.CAServicer):
                         identifier=i,
                     ))
 
-                if any(not (c.isdigit() or c.islower()) for c in id_value):
+                if any(not (c.isdigit() or c.islower() or c == ".") for c in id_value):
                     errors.append(order_pb2.Error(
                         error_type=order_pb2.RejectedIdentifierError,
                         status=400,
