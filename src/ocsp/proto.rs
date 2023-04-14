@@ -193,6 +193,7 @@ pub struct ResponseData<'a> {
 }
 
 #[derive(asn1::Asn1Write, Debug)]
+#[allow(dead_code)]
 pub enum ResponderID<'a> {
     #[explicit(1)]
     ByName(&'a [u8]),
@@ -236,6 +237,7 @@ impl Enumerated {
         Enumerated(v)
     }
 
+    #[allow(dead_code)]
     pub fn value(&self) -> u32 {
         self.0
     }
@@ -263,6 +265,7 @@ pub struct AccessDescription<'a> {
     pub access_location: asn1::Tlv<'a>
 }
 
+#[allow(dead_code)]
 pub type PreferredSignatureAlgorithms<'a> = asn1::SequenceOf<'a, PreferredSignatureAlgorithm>;
 
 #[derive(asn1::Asn1Read, Debug)]

@@ -292,7 +292,7 @@ impl SignatureAlgorithm {
         } else if oid.eq(&ECDSA_WITH_SHA1) {
             Some(SignatureAlgorithm::EcdsaWithSha1)
         } else if oid.eq(&ECDSA_WITH_SHA224) {
-            Some(SignatureAlgorithm::EcdsaWithSha1)
+            Some(SignatureAlgorithm::EcdsaWithSha224)
         } else if oid.eq(&ECDSA_WITH_SHA256) {
             Some(SignatureAlgorithm::EcdsaWithSha256)
         } else if oid.eq(&ECDSA_WITH_SHA384) {

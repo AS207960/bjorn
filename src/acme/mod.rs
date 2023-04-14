@@ -488,6 +488,7 @@ impl rocket::fairing::Fairing for DBMigrationFairing {
     }
 }
 
+#[allow(dead_code)]
 pub struct ClientData {
     user_agent: String,
     accept_languages: Vec<String>,

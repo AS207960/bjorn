@@ -71,13 +71,13 @@ pub fn cvt(r: libc::c_int) -> Result<libc::c_int, openssl::error::ErrorStack> {
     }
 }
 
-pub fn cvt_p<T>(r: *mut T) -> Result<*mut T, openssl::error::ErrorStack> {
-    if r.is_null() {
-        Err(openssl::error::ErrorStack::get())
-    } else {
-        Ok(r)
-    }
-}
+// pub fn cvt_p<T>(r: *mut T) -> Result<*mut T, openssl::error::ErrorStack> {
+//     if r.is_null() {
+//         Err(openssl::error::ErrorStack::get())
+//     } else {
+//         Ok(r)
+//     }
+// }
 
 pub fn cvt_cp<T>(r: *const T) -> Result<*const T, openssl::error::ErrorStack> {
     if r.is_null() {
