@@ -5,6 +5,15 @@
 Björn is not a full CA upon to itself, but contains many of the building 
 blocks of a complete ACME CA.
 
+## Installing on Debian
+
+```shell
+apt install curl build-essential libssl-dev pkg-config protobuf-compiler
+curl https://sh.rustup.rs -sSf | sh
+source "$HOME/.cargo/env"
+cargo install bjorn-acme
+```
+
 ## Components
 
 Björn consists of three primary components, and includes an example CA
