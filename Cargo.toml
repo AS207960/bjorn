@@ -6,6 +6,7 @@ edition = "2018"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/as207960/bjorn"
+description = "Building blocks for an ACME server"
 
 [profile.release]
 strip = true
