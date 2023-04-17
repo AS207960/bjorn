@@ -1,6 +1,6 @@
 [package]
 name = "bjorn-acme"
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Q Misell <q@as207960.net>"]
 edition = "2021"
 readme = "README.md"

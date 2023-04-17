@@ -54,7 +54,7 @@ async fn get_flattened_jws(
             }));
         }
     };
-    let jws = match serde_json::from_str::<types::jose::FlattenedJWS>(&body) {
+    let jws = match serde_json::from_str::<FlattenedJWS>(&body) {
         Ok(j) => j,
         Err(err) => {
             return Err((rocket::http::Status::BadRequest, types::error::Error {

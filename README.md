@@ -8,7 +8,7 @@ blocks of a complete ACME CA.
 ## Installing on Debian
 
 ```shell
-apt install curl build-essential libssl-dev pkg-config protobuf-compiler
+apt install curl build-essential libssl-dev pkg-config protobuf-compiler libpq-dev
 curl https://sh.rustup.rs -sSf | sh
 source "$HOME/.cargo/env"
 cargo install bjorn-acme
@@ -81,7 +81,7 @@ A basic diagram of their inter-working is as follows;
 * [RFC 8738](https://datatracker.ietf.org/doc/html/rfc8738) - Automated Certificate Management Environment (ACME) IP Identifier Validation Extension
 * [RFC 8954](https://datatracker.ietf.org/doc/html/rfc8954) - Online Certificate Status Protocol (OCSP) Nonce Extension
 * [draft-shoemaker-caa-ip-01](https://datatracker.ietf.org/doc/html/draft-shoemaker-caa-ip-01) - Certification Authority Authorization (CAA) Validation for IP Addresses
-* [draft-misell-acme-onion-00](https://datatracker.ietf.org/doc/html/draft-misell-acme-onion-00) - Automated Certificate Management Environment (ACME) Extensions for ".onion" Domain Names
+* [draft-misell-acme-onion-01](https://datatracker.ietf.org/doc/html/draft-misell-acme-onion-01) - Automated Certificate Management Environment (ACME) Extensions for ".onion" Domain Names
 
 Note: CAA iodef is not yet supported
 
@@ -149,10 +149,10 @@ ToS agreement pages are stored.
 ##### `acme_issuers`
 A list of issuing certificates for which this server can handle revocation requests.
 
-##### `cert_id`
+###### `cert_id`
 The ID used by backend CA to identify the issuing certificate.
 
-##### `issuer_cert_file`
+###### `issuer_cert_file`
 The path of the X.509 public key file (PEM encoded) for the issuing certificate.
 
 ##### `db.url`
@@ -423,3 +423,6 @@ The `KeyValidationRequest` input message contains;
 The response message contains a boolean indication validation success or
 failure, and in case of failure an error object containing a list of errors
 that caused the validation to fail. The error format is described above.
+
+In the case of `dns` type identifiers the identifier value must be lowercase, non punny code (IDNA), and without a 
+trailing period for the root zone.

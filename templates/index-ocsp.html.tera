@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Benny: The AS207960 OCSP Responder</title>
+    <link rel="icon" type="image/svg+xml" href="https://as207960.net/favicon.svg">
+    <link rel="stylesheet" href="https://as207960.net/assets/css/bootstrap.css">
+</head>
+<body>
+<div class="container my-5">
+    <div class="bg-light rounded p-4">
+        <div class="row">
+            <div class="col-md-3">
+                <img class="mw-100" src="https://as207960.net/assets/img/logo.svg" alt="">
+            </div>
+            <div class="col-md-9">
+                <h1 class="display-4">Benny</h1>
+                <p class="lead">The AS207960 OCSP Responder</p>
+                <p>
+                    This is an API server, it can't be used in your web browser.
+                    You should be using a specialized client such as <code>openssl ocsp</code>.
+                </p>
+                <a href="https://as207960.net" class="btn btn-primary btn-lg">Looking for our website?</a>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

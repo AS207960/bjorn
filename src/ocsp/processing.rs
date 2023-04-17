@@ -1,43 +1,8 @@
 use chrono::prelude::*;
 
-#[derive(Debug)]
-pub(crate) struct InnerBlockingOCSPClient {
-    client: crate::cert_order::ocsp_client::OcspClient<tonic::transport::Channel>,
-    rt: tokio::runtime::Runtime,
-}
+pub type OCSPClient = crate::cert_order::ocsp_client::OcspClient<tonic::transport::Channel>;
 
-impl InnerBlockingOCSPClient {
-    pub(crate) fn check_cert(&mut self, request: impl tonic::IntoRequest<crate::cert_order::CheckCertRequest>)
-                             -> Result<tonic::Response<crate::cert_order::CheckCertResponse>, tonic::Status> {
-        self.rt.block_on(self.client.check_cert(request))
-    }
-}
-
-#[derive(Debug)]
-pub struct BlockingOCSPClient(std::sync::Arc<std::sync::Mutex<InnerBlockingOCSPClient>>);
-
-impl BlockingOCSPClient {
-    pub fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: std::convert::TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>
-    {
-        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-        let client = rt.block_on(crate::cert_order::ocsp_client::OcspClient::connect(dst))?;
-
-        Ok(Self(std::sync::Arc::new(std::sync::Mutex::new(InnerBlockingOCSPClient {
-            client,
-            rt,
-        }))))
-    }
-
-    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, InnerBlockingOCSPClient> {
-        self.0.lock().unwrap()
-    }
-}
-
-
-pub fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssuers) -> super::types::OCSPResponse<'a> {
+pub async fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssuers<'_>) -> super::types::OCSPResponse<'a> {
     let req = match super::types::parse_ocsp_req(&req) {
         Ok(r) => r,
         Err(e) => return e
@@ -98,11 +63,11 @@ pub fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssu
     let mut single_responses = vec![];
 
     for cert_req in req.request.requests {
-        let mut locked_client = first_issuer.grpc_client.lock();
-        let check_cert_resp = match locked_client.check_cert(crate::cert_order::CheckCertRequest {
+        let mut client = first_issuer.grpc_client.clone();
+        let check_cert_resp = match client.check_cert(crate::cert_order::CheckCertRequest {
             issuer_id: first_issuer.cert_id.clone(),
             serial_number: cert_req.cert_id.serial_number.to_vec(),
-        }) {
+        }).await {
             Ok(r) => r.into_inner(),
             Err(e) => {
                 warn!("Unable to check certificate status: {:?}", e);
@@ -112,7 +77,6 @@ pub fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OCSPIssu
                 };
             }
         };
-        std::mem::drop(locked_client);
         single_responses.push(super::types::SingleOCSPResponse {
             cert_id: cert_req.cert_id.clone(),
             cert_status: match crate::cert_order::CertStatus::from_i32(check_cert_resp.status) {

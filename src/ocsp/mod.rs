@@ -8,8 +8,6 @@ pub(crate) mod issuers;
 
 pub use issuers::{OCSPIssuers, OCSPIssuer};
 
-const HOME_PAGE: &'static str = include_str!("index.html");
-
 pub struct OCSPResponse {
     value: Vec<u8>,
     produced_at: Option<DateTime<Utc>>,
@@ -67,8 +65,8 @@ impl From<types::OCSPResponse<'_>> for OCSPResponse {
 }
 
 #[get("/")]
-pub fn index() -> rocket::response::content::RawHtml<&'static str> {
-    rocket::response::content::RawHtml(HOME_PAGE)
+pub fn index() -> rocket_dyn_templates::Template {
+    rocket_dyn_templates::Template::render("index-ocsp", std::collections::HashMap::<(), ()>::new())
 }
 
 #[head("/<_request>")]
@@ -77,13 +75,13 @@ pub fn ocsp_head(_request: String) -> rocket::http::Status {
 }
 
 #[get("/<request>")]
-pub fn ocsp_get(request: String, ocsp_issuers: &rocket::State<issuers::OCSPIssuers<'_>>) -> Result<OCSPResponse, rocket::http::Status> {
+pub async fn ocsp_get(request: String, ocsp_issuers: &rocket::State<issuers::OCSPIssuers<'_>>) -> Result<OCSPResponse, rocket::http::Status> {
     let ocsp_req = match BASE64_URL_SAFE.decode(&request) {
         Ok(r) => r,
         Err(_) => return Err(rocket::http::Status::BadRequest)
     };
 
-    Ok(processing::handle_ocsp(&ocsp_req, &ocsp_issuers).into())
+    Ok(processing::handle_ocsp(&ocsp_req, &ocsp_issuers).await.into())
 }
 
 #[post("/", format = "application/ocsp-request", data = "<request>")]
@@ -99,5 +97,5 @@ pub async fn ocsp_post(request: rocket::data::Data<'_>, ocsp_issuers: &rocket::S
         return Err(rocket::http::Status::PayloadTooLarge);
     }
 
-    Ok(processing::handle_ocsp(&ocsp_req, &ocsp_issuers).into())
+    Ok(processing::handle_ocsp(&ocsp_req, &ocsp_issuers).await.into())
 }

@@ -4,13 +4,13 @@ use foreign_types::{ForeignTypeRef, ForeignType};
 pub struct OCSPIssuer {
     pub(crate) issuer: openssl::x509::X509,
     pub(crate) signer: openssl::pkcs12::ParsedPkcs12_2,
-    pub(crate) grpc_client: super::processing::BlockingOCSPClient,
+    pub(crate) grpc_client: super::processing::OCSPClient,
     pub(crate) cert_id: String,
     pub(crate) pub_key_sha1: Vec<u8>,
 }
 
 impl OCSPIssuer {
-    pub fn new(issuer: openssl::x509::X509, signer: openssl::pkcs12::ParsedPkcs12_2, grpc_client: super::processing::BlockingOCSPClient, cert_id: String) -> OCSPIssuer {
+    pub fn new(issuer: openssl::x509::X509, signer: openssl::pkcs12::ParsedPkcs12_2, grpc_client: super::processing::OCSPClient, cert_id: String) -> OCSPIssuer {
         let issuer_key = unsafe {
             let issuer_key_string = super::proto::X509_get0_pubkey_bitstr( signer.cert.as_ref().expect("No signer cert").as_ptr());
             std::slice::from_raw_parts(

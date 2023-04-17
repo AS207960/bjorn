@@ -1,4 +1,5 @@
-[debug]
+[default]
+address = "::1"
 tos_uri = "https://as207960.net/assets/docs/AS207960_T_C_s.pdf"
 tos_agreed_to_after = "2023-03-18T00:00:00Z"
 website_uri = "https://as207960.net"
@@ -7,11 +8,11 @@ ca_grpc_uri = "http://[::1]:50051"
 external_uri = "https://acme-onions.eu.ngrok.io"
 tor_storage = "./tor-storage"
 
-[[debug.acme_issuers]]
+[[default.acme_issuers]]
 cert_id = "a"
 issuer_cert_file = "python-ca/ca-certs/intermediate-crt.pem"
 
-[[debug.ocsp_issuers]]
+[[default.ocsp_issuers]]
 cert_id = "a"
 issuer_cert_file = "python-ca/ca-certs/intermediate-crt.pem"
 signer_pkcs12_file = "ocsp-signer.p12"
