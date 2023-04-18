@@ -161,7 +161,7 @@ impl<'a, T> asn1::SimpleAsn1Writable for CowSequenceOfWriter<'a, T>
     where
         T: asn1::Asn1Writable + ToOwned + Clone
 {
-    const TAG: asn1::Tag = asn1::Tag::primitive(0x10 | 0x20);
+    const TAG: asn1::Tag = asn1::Tag::primitive(0x10);
 
     fn write_data(&self, dest: &mut asn1::WriteBuf) -> Result<(), asn1::WriteError> {
         let mut w = asn1::Writer::new(dest);
