@@ -51,5 +51,6 @@ impl Default for Status {
 
 #[derive(Deserialize, Debug)]
 pub struct ChallengeRespond {
-
+    #[serde(default)]
+    pub csr: Option<String>
 }

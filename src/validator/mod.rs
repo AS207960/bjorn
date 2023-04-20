@@ -1,4 +1,4 @@
-use foreign_types::ForeignType;
+use foreign_types::{ForeignType, ForeignTypeRef};
 use std::convert::TryFrom;
 use base64::prelude::*;
 
@@ -167,10 +167,13 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         }
 
         let (test_uri, is_tor) = match identifier {
-            Identifier::Domain(domain, _) => (
-                format!("http://{}:80/.well-known/acme-challenge/{}", domain, req.token),
-                domain.ends_with(".onion")
-            ),
+            Identifier::Domain(domain, wildcard) => {
+                if wildcard {
+                    return Err(tonic::Status::invalid_argument("http-01 must not be used for wildcard domains"));
+                }
+
+                (format!("http://{}:80/.well-known/acme-challenge/{}", domain, req.token), domain.ends_with(".onion"))
+            },
             Identifier::IPAddr(ip) => (match ip {
                 std::net::IpAddr::V4(ipv4) => format!("http://{}:80/.well-known/acme-challenge/{}", ipv4, req.token),
                 std::net::IpAddr::V6(ipv6) => format!("http://[{}]:80/.well-known/acme-challenge/{}", ipv6, req.token),
@@ -414,20 +417,7 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         let search_domain = match identifier {
             Identifier::Domain(domain, _) => {
                 if domain.ends_with(".onion") {
-                    return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
-                        valid: false,
-                        error: Some(crate::cert_order::ErrorResponse {
-                            errors: vec![crate::cert_order::Error {
-                                error_type: crate::cert_order::ErrorType::UnsupportedIdentifierError.into(),
-                                title: "Validation failed".to_string(),
-                                detail: "dns-01 is not supported for .onion domains".to_string(),
-                                status: 400,
-                                identifier: req.identifier,
-                                instance: None,
-                                sub_problems: vec![],
-                            }]
-                        }),
-                    }))
+                    return Err(tonic::Status::invalid_argument("dns-01 must not be used for .onion domains"))
                 }
                 format!("_acme-challenge.{}.", domain.trim_end_matches('.'))
             },
@@ -517,9 +507,13 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         }
 
         let (connection_string, sni_string, ip_bytes, is_tor) = match identifier {
-            Identifier::Domain(domain, _) => (
-                format!("{}:443", domain), domain.to_ascii_lowercase(), vec![], domain.ends_with(".onion")
-            ),
+            Identifier::Domain(domain, wildcard) => {
+                if wildcard {
+                    return Err(tonic::Status::invalid_argument("tls-alpn-01 must not be used for wildcard domains"));
+                }
+
+                (format!("{}:443", domain), domain.to_ascii_lowercase(), vec![], domain.ends_with(".onion"))
+            },
             Identifier::IPAddr(ip) => match ip {
                 std::net::IpAddr::V4(ipv4) =>
                     (format!("{}:443", ipv4), trust_dns_resolver::Name::from(ipv4).to_ascii(), ipv4.octets().to_vec(), false),
@@ -904,7 +898,363 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             }
         }))
     }
+
+    async fn validate_onion_csr01(
+        &self, request: tonic::Request<crate::cert_order::OnionCsrValidationRequest>,
+    ) -> Result<tonic::Response<crate::cert_order::ValidationResult>, tonic::Status> {
+        let req = request.into_inner();
+        let identifier = map_identifier(req.identifier.clone())?;
+
+        let hs_priv_key = if req.hs_private_key.len() == 0 {
+            None
+        } else if req.hs_private_key.len() == 32 {
+            Some(std::convert::TryInto::<[u8; 32]>::try_into(req.hs_private_key.as_slice()).unwrap())
+        } else {
+            return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
+        };
+
+        if let Some(caa_err) = check_caa(
+            self, &identifier, "onion-csr-01",
+            req.account_uri.as_deref(), hs_priv_key.as_ref()
+        ).await {
+            return Ok(tonic::Response::new(caa_err));
+        }
+
+        let hs_addr = match identifier {
+            Identifier::Domain(domain, _) => {
+                if !domain.ends_with(".onion") {
+                    return Err(tonic::Status::invalid_argument("onion-csr-01 must not be used for non .onion domains"))
+                }
+                match torrosion::hs::HSAddress::from_str(&domain) {
+                    Ok(addr) => addr,
+                    Err(_) => {
+                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                            valid: false,
+                            error: Some(crate::cert_order::ErrorResponse {
+                                errors: vec![crate::cert_order::Error {
+                                    error_type: crate::cert_order::ErrorType::UnsupportedIdentifierError.into(),
+                                    title: "Invalid domain".to_string(),
+                                    detail: "Malformed HS address".to_string(),
+                                    status: 400,
+                                    identifier: req.identifier,
+                                    instance: None,
+                                    sub_problems: vec![],
+                                }]
+                            }),
+                        }))
+                    }
+                }
+            },
+            Identifier::IPAddr(_) => return Err(tonic::Status::invalid_argument("onion-csr-01 must not be used for IP addresses")),
+            Identifier::Email(_) => return Err(tonic::Status::invalid_argument("onion-csr-01 makes no sense for email")),
+        };
+
+        let addr_pub_key = openssl::pkey::PKey::public_key_from_raw_bytes(
+            &hs_addr.key, openssl::pkey::Id::ED25519
+        ).unwrap();
+
+        let csr = match openssl::x509::X509Req::from_der(&req.csr) {
+            Ok(csr) => csr,
+            Err(_) => {
+                return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    valid: false,
+                    error: Some(crate::cert_order::ErrorResponse {
+                        errors: vec![crate::cert_order::Error {
+                            error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                            title: "Invalid CSR".to_string(),
+                            detail: "CSR could not be parsed".to_string(),
+                            status: 400,
+                            identifier: req.identifier,
+                            instance: None,
+                            sub_problems: vec![],
+                        }]
+                    }),
+                }));
+            }
+        };
+
+        let req_pub_key = match csr.public_key() {
+            Ok(k) => k,
+            Err(_) => {
+                return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    valid: false,
+                    error: Some(crate::cert_order::ErrorResponse {
+                        errors: vec![crate::cert_order::Error {
+                            error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                            title: "Invalid CSR".to_string(),
+                            detail: "CSR could not be parsed".to_string(),
+                            status: 400,
+                            identifier: req.identifier,
+                            instance: None,
+                            sub_problems: vec![],
+                        }]
+                    }),
+                }));
+            }
+        };
+
+        if !req_pub_key.public_eq(&addr_pub_key) {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "CSR public key does not match public key of .onion domain".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        if !csr.verify(&addr_pub_key).map_or(false, |r| r) {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "CSR signature invalid".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        let ca_nonce_oid = openssl::asn1::Asn1Object::from_str("2.23.140.41").unwrap();
+        let applicant_nonce_oid = openssl::asn1::Asn1Object::from_str("2.23.140.42").unwrap();
+
+        let ca_nonce_at_i = unsafe {
+            X509_REQ_get_attr_by_OBJ(csr.as_ptr(), ca_nonce_oid.as_ptr(), -1)
+        };
+        let applicant_nonce_at_i = unsafe {
+            X509_REQ_get_attr_by_OBJ(csr.as_ptr(), applicant_nonce_oid.as_ptr(), -1)
+        };
+
+        if ca_nonce_at_i < 0 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "CA nonce attribute not present".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        if applicant_nonce_at_i < 0 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "Applicanct nonce attribute not present".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        let ca_nonce_at_i2 = unsafe {
+            X509_REQ_get_attr_by_OBJ(csr.as_ptr(), ca_nonce_oid.as_ptr(), ca_nonce_at_i)
+        };
+        let applicant_nonce_at_i2 = unsafe {
+            X509_REQ_get_attr_by_OBJ(csr.as_ptr(), applicant_nonce_oid.as_ptr(), applicant_nonce_at_i)
+        };
+
+        if ca_nonce_at_i2 >= 0 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "Multiple CA nonce attributes present".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        if applicant_nonce_at_i2 >= 0 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "Multiple applicant nonce attributes present".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        let ca_nonce_attr = unsafe {
+            X509_REQ_get_attr(csr.as_ptr(), ca_nonce_at_i)
+        };
+        let applicant_nonce_attr = unsafe {
+            X509_REQ_get_attr(csr.as_ptr(), applicant_nonce_at_i)
+        };
+
+        let ca_nonce_attr_count = unsafe {
+            X509_ATTRIBUTE_count(ca_nonce_attr)
+        };
+        let applicant_nonce_attr_count = unsafe {
+            X509_ATTRIBUTE_count(applicant_nonce_attr)
+        };
+
+        if ca_nonce_attr_count != 1 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "CA nonce attribute doesn't contain only one value".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        if applicant_nonce_attr_count != 1 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "Applicant nonce attribute doesn't contain only one value".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        let ca_nonce_attr_value = match unsafe {
+            crate::util::cvt_p(X509_ATTRIBUTE_get0_data(
+                ca_nonce_attr, 0, openssl_sys::V_ASN1_OCTET_STRING, std::ptr::null()
+            ))
+        } {
+            Ok(v) => unsafe {
+                openssl::asn1::Asn1StringRef::from_ptr(v as *mut openssl_sys::ASN1_STRING)
+            },
+            Err(_) => {
+                return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    valid: false,
+                    error: Some(crate::cert_order::ErrorResponse {
+                        errors: vec![crate::cert_order::Error {
+                            error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                            title: "Invalid CSR".to_string(),
+                            detail: "Invalid data type for CA nonce attribute".to_string(),
+                            status: 400,
+                            identifier: req.identifier,
+                            instance: None,
+                            sub_problems: vec![],
+                        }]
+                    }),
+                }));
+            }
+        };
+
+        let applicant_nonce_attr_value = match unsafe {
+            crate::util::cvt_p(X509_ATTRIBUTE_get0_data(
+                applicant_nonce_attr, 0, openssl_sys::V_ASN1_OCTET_STRING, std::ptr::null()
+            ))
+        } {
+            Ok(v) => unsafe {
+                openssl::asn1::Asn1StringRef::from_ptr(v as *mut openssl_sys::ASN1_STRING)
+            },
+            Err(_) => {
+                return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    valid: false,
+                    error: Some(crate::cert_order::ErrorResponse {
+                        errors: vec![crate::cert_order::Error {
+                            error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                            title: "Invalid CSR".to_string(),
+                            detail: "Invalid data type for applicant nonce attribute".to_string(),
+                            status: 400,
+                            identifier: req.identifier,
+                            instance: None,
+                            sub_problems: vec![],
+                        }]
+                    }),
+                }));
+            }
+        };
+
+        if applicant_nonce_attr_value.len() < 8 {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "Applicant nonce attribute does not contain at least 64 bits of entropy".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        }
+
+        if ca_nonce_attr_value.as_slice() != req.ca_nonce {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::IncorrectResponseError.into(),
+                        title: "Invalid CSR".to_string(),
+                        detail: "CA nonce attribute does not CA provided value".to_string(),
+                        status: 400,
+                        identifier: req.identifier,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }));
+        } else {
+            return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                valid: true,
+                error: None
+            }));
+        }
+    }
 }
+
+#[allow(non_camel_case_types)]
+enum X509_ATTRIBUTE {}
 
 extern "C" {
     fn X509v3_get_ext_by_OBJ(
@@ -918,4 +1268,24 @@ extern "C" {
         pp: *mut *const libc::c_uchar,
         length: libc::c_long,
     ) -> *mut openssl_sys::ASN1_OCTET_STRING;
+
+    fn X509_REQ_get_attr_by_OBJ(
+        req: *const openssl_sys::X509_REQ,
+        obj: *const openssl_sys::ASN1_OBJECT,
+        start_after: libc::c_int,
+    ) -> libc::c_int;
+
+
+    fn X509_REQ_get_attr(
+        req: *const openssl_sys::X509_REQ, index: libc::c_int
+    ) -> *const X509_ATTRIBUTE;
+
+    fn X509_ATTRIBUTE_count(attr: *const X509_ATTRIBUTE) -> libc::c_int;
+
+    fn X509_ATTRIBUTE_get0_data(
+        attr: *const X509_ATTRIBUTE,
+        index: libc::c_int,
+        data_type: libc::c_int,
+        data: *const libc::c_void
+    ) -> *mut libc::c_void;
 }

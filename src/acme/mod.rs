@@ -1436,7 +1436,7 @@ pub async fn challenge_post(
 
             try_result!(existing_authz.challenge_to_json(chall_result, &conf), db, conf)
         }
-        Some(_chall_response) => {
+        Some(chall_response) => {
             let jwk: types::jose::JWK = (&acct_key.key).try_into().unwrap();
             let account_thumbprint = jws::make_jwk_thumbprint(&jwk);
 
@@ -1445,6 +1445,26 @@ pub async fn challenge_post(
                 auth_id: existing_authz.ca_id.clone(),
                 account_thumbprint,
                 account_uri: format!("{}{}", conf.external_uri, acct_key.inner.kid()),
+                response: match chall_response.csr {
+                    Some(csr) => {
+                        let csr = match BASE64_URL_SAFE.decode(csr) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                return responses::ACMEResponse::new_error(types::error::Error {
+                                    error_type: types::error::Type::Malformed,
+                                    status: 400,
+                                    title: "Bad CSR".to_string(),
+                                    detail: "Invalid CSR encoding".to_string(),
+                                    sub_problems: vec![],
+                                    instance: None,
+                                    identifier: None,
+                                }, &db, &conf).await;
+                            }
+                        };
+                        Some(crate::cert_order::complete_challenge_request::Response::Csr(csr))
+                    },
+                    _ => None,
+                }
             }).await), db, conf).into_inner();
 
             let ca_chall = try_result!(processing::unwrap_chall_response(chall_result), db, conf);
