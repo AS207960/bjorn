@@ -4,6 +4,7 @@ extern crate rocket;
 #[launch]
 fn rocket() -> _ {
     pretty_env_logger::init();
+    info!("Bjorn ACME Server version {} starting up...", env!("CARGO_PKG_VERSION"));
 
     rocket::build()
         .attach(bjorn::acme::ConfigFairing())

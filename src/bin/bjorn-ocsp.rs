@@ -16,6 +16,7 @@ struct OCSPIssuerConfig {
 #[launch]
 fn rocket() -> _ {
     pretty_env_logger::init();
+    info!("Benny OCSP server version {} starting up...", env!("CARGO_PKG_VERSION"));
 
     rocket::build()
         .attach( rocket_dyn_templates::Template::fairing())

@@ -13,6 +13,7 @@ struct ValidatorConfig {
 
 fn main() {
     pretty_env_logger::init();
+    info!("Frida validator version {} starting up...", env!("CARGO_PKG_VERSION"));
 
     let fig = rocket::config::Config::figment();
     let config = fig.extract::<rocket::config::Config>().expect("Unable to load config");
