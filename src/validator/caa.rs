@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum CAAError {
     ServFail,
-    UnsupportedCritical,
+    UnsupportedCritical(String),
     Other(String)
 }
 
@@ -44,7 +44,7 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         Err(e) => {
             info!("Failed to fetch second layer for {}: {}", domain, e);
             if is_caa_critical {
-                return Err(CAAError::UnsupportedCritical);
+                return Err(CAAError::UnsupportedCritical("CAA is critical but failed to read second layer".to_string()));
             } else {
                 return Ok(Vec::new());
             }
@@ -56,17 +56,17 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
 
         let value =  match &tag {
             trust_dns_proto::rr::rdata::caa::Property::Issue | trust_dns_proto::rr::rdata::caa::Property::IssueWild => {
-                let value = trust_dns_proto::rr::rdata::caa::read_issuer(caa.value.as_bytes())
-                    .map_err(|_| CAAError::Other("Unable to parse issuer tag".to_string()))?;
+                let value = trust_dns_proto::rr::rdata::caa::read_issuer(&caa.value)
+                    .map_err(|e| CAAError::Other(format!("Unable to parse issuer tag: {}", e)))?;
                 trust_dns_proto::rr::rdata::caa::Value::Issuer(value.0, value.1)
             }
             trust_dns_proto::rr::rdata::caa::Property::Iodef => {
-                let url = trust_dns_proto::rr::rdata::caa::read_iodef(caa.value.as_bytes())
-                    .map_err(|_| CAAError::Other("Unable to parse iodef tag".to_string()))?;
+                let url = trust_dns_proto::rr::rdata::caa::read_iodef(&caa.value)
+                    .map_err(|e| CAAError::Other(format!("Unable to parse iodef tag: {}", e)))?;
                 trust_dns_proto::rr::rdata::caa::Value::Url(url)
             }
             trust_dns_proto::rr::rdata::caa::Property::Unknown(_) => trust_dns_proto::rr::rdata::caa::Value::Unknown(
-                caa.value.into_bytes()
+                caa.value
             ),
         };
 
@@ -141,12 +141,14 @@ pub async fn find_caa_record<S: torrosion::storage::Storage + Send + Sync + 'sta
     return Ok(vec![]);
 }
 
+#[derive(Debug)]
 struct CAAIssuer {
     identifier: String,
     account_uri: Option<String>,
     validation_methods: Option<Vec<String>>,
 }
 
+#[derive(Debug)]
 struct CAAIssuers(Vec<CAAIssuer>);
 
 impl CAAIssuers {
@@ -189,6 +191,7 @@ impl CAAIssuers {
     }
 }
 
+#[derive(Debug)]
 struct CAAPolicy {
     issuers: CAAIssuers,
     issuers_wild: CAAIssuers,
@@ -242,9 +245,9 @@ fn parse_caa_policy(rdata: &[trust_dns_proto::rr::rdata::CAA]) -> CAAResult<CAAP
                             "http" | "https" => {
                                 policy.iodef_url = Some(url.as_str().to_string())
                             }
-                            _ => {
+                            o => {
                                 if rr.issuer_critical() {
-                                    return Err(CAAError::UnsupportedCritical);
+                                    return Err(CAAError::UnsupportedCritical(format!("unsupported iodef URI scheme: {}", o)));
                                 }
                             }
                         }
@@ -273,10 +276,11 @@ fn parse_caa_policy(rdata: &[trust_dns_proto::rr::rdata::CAA]) -> CAAResult<CAAP
                     _ => unreachable!()
                 }
             }
-            _ =>
+            trust_dns_proto::rr::rdata::caa::Property::Unknown(o) => {
                 if rr.issuer_critical() {
-                    return Err(CAAError::UnsupportedCritical);
+                    return Err(CAAError::UnsupportedCritical(format!("unsupported CAA tag: {}", o)));
                 }
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "bjorn-acme"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["Q Misell <q@as207960.net>"]
 edition = "2021"
 readme = "README.md"
@@ -50,7 +50,7 @@ trust-dns-resolver = "0.22"
 reqwest = { version = "0.11", features = ["gzip", "brotli", "deflate"] }
 figment = "0.10"
 futures = "0.3.27"
-torrosion = "0"
+torrosion = "0.3"
 hyper = "0.14.25"
 
 [build-dependencies]

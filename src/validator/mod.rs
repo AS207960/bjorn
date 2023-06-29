@@ -75,13 +75,13 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                     }]
                 }),
             }),
-            caa::CAAError::UnsupportedCritical => return Some(crate::cert_order::ValidationResult {
+            caa::CAAError::UnsupportedCritical(e) => return Some(crate::cert_order::ValidationResult {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
                         error_type: crate::cert_order::ErrorType::CaaError.into(),
                         title: "CAA error".to_string(),
-                        detail: "Unsupported critical CAA record".to_string(),
+                        detail: format!("Unsupported critical CAA record: {}", e),
                         status: 400,
                         identifier: None,
                         instance: None,
