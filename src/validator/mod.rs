@@ -88,7 +88,21 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         sub_problems: vec![],
                     }]
                 }),
-            })
+            }),
+            caa::CAAError::Other(e) => return Some(crate::cert_order::ValidationResult {
+                valid: false,
+                error: Some(crate::cert_order::ErrorResponse {
+                    errors: vec![crate::cert_order::Error {
+                        error_type: crate::cert_order::ErrorType::CaaError.into(),
+                        title: "CAA error".to_string(),
+                        detail: e,
+                        status: 400,
+                        identifier: None,
+                        instance: None,
+                        sub_problems: vec![],
+                    }]
+                }),
+            }),
         }
     };
 

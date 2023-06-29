@@ -2,6 +2,7 @@
 pub enum CAAError {
     ServFail,
     UnsupportedCritical,
+    Other(String)
 }
 
 pub type CAAResult<T> = Result<T, CAAError>;
@@ -15,19 +16,23 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
     };
 
     if !client.ready().await {
-        return Err(CAAError::ServFail);
+        return Err(CAAError::Other("Unable to connect to the Tor network".to_string()));
     }
 
     let hs_address = match torrosion::hs::HSAddress::from_str(domain) {
         Ok(hs) => hs,
-        Err(_) => return Err(CAAError::ServFail)
+        Err(e) => {
+            return Err(CAAError::Other(format!("Invalid HS address: {}", e)));
+        }
     };
 
     let (
         descriptor, first_layer, blinded_key, hs_subcred
     ) = match hs_address.fetch_ds_first_layer(&client).await {
         Ok(v) => v,
-        Err(_) => return Err(CAAError::ServFail)
+        Err(e) => {
+            return Err(CAAError::Other(format!("Failed to fetch HS descriptor: {}", e)));
+        }
     };
 
     let is_caa_critical = first_layer.caa_critical;
@@ -36,10 +41,13 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         descriptor, first_layer, hs_priv_key.copied(), &blinded_key, &hs_subcred
     ).await {
         Ok(v) => v,
-        Err(_) => if is_caa_critical {
-            return Err(CAAError::UnsupportedCritical);
-        } else {
-            return Ok(Vec::new());
+        Err(e) => {
+            info!("Failed to fetch second layer for {}: {}", domain, e);
+            if is_caa_critical {
+                return Err(CAAError::UnsupportedCritical);
+            } else {
+                return Ok(Vec::new());
+            }
         }
     };
 
@@ -49,12 +57,12 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         let value =  match &tag {
             trust_dns_proto::rr::rdata::caa::Property::Issue | trust_dns_proto::rr::rdata::caa::Property::IssueWild => {
                 let value = trust_dns_proto::rr::rdata::caa::read_issuer(caa.value.as_bytes())
-                    .map_err(|_| CAAError::ServFail)?;
+                    .map_err(|_| CAAError::Other("Unable to parse issuer tag".to_string()))?;
                 trust_dns_proto::rr::rdata::caa::Value::Issuer(value.0, value.1)
             }
             trust_dns_proto::rr::rdata::caa::Property::Iodef => {
                 let url = trust_dns_proto::rr::rdata::caa::read_iodef(caa.value.as_bytes())
-                    .map_err(|_| CAAError::ServFail)?;
+                    .map_err(|_| CAAError::Other("Unable to parse iodef tag".to_string()))?;
                 trust_dns_proto::rr::rdata::caa::Value::Url(url)
             }
             trust_dns_proto::rr::rdata::caa::Property::Unknown(_) => trust_dns_proto::rr::rdata::caa::Value::Unknown(
