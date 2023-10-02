@@ -50,7 +50,9 @@ impl Account {
         rocket::uri!(crate::acme::account(crate::util::uuid_as_b64(&self.id))).to_string()
     }
 
-    pub(crate) async fn to_json(&self, db: &crate::DBConn, conf: &crate::acme::Config) -> crate::acme::ACMEResult<crate::types::account::Account> {
+    pub(crate) async fn to_json(
+        &self, db: &crate::DBConn, external_uri: &crate::acme::ExternalURL,
+    ) -> crate::acme::ACMEResult<crate::types::account::Account> {
         let id = self.id.clone();
         let account_contacts: Vec<AccountContact> = crate::try_db_result!(db.run(move |c| super::schema::account_contacts::dsl::account_contacts.filter(
             super::schema::account_contacts::dsl::account.eq(&id)
@@ -74,7 +76,9 @@ impl Account {
                     signature: self.eab_sig.as_deref().unwrap_or_default().to_string(),
                 })
             },
-            orders: format!("{}{}", &conf.external_uri, rocket::uri!(crate::acme::account_orders(crate::util::uuid_as_b64(&self.id))).to_string()),
+            orders: external_uri.0.join(
+                &rocket::uri!(crate::acme::account_orders(crate::util::uuid_as_b64(&self.id))).to_string()
+            ).unwrap().to_string(),
         })
     }
 }
@@ -142,7 +146,7 @@ impl Order {
     }
 
     pub(crate) async fn to_json(
-        &self, db: &crate::DBConn, ca_obj: crate::cert_order::Order, conf: &crate::acme::Config,
+        &self, db: &crate::DBConn, ca_obj: crate::cert_order::Order, external_uri: &crate::acme::ExternalURL
     ) -> crate::acme::ACMEResult<crate::types::order::Order> {
         let acct = self.account;
         let authorizations = futures::stream::iter(ca_obj.authorizations.into_iter()).then(|a| async move {
@@ -166,7 +170,7 @@ impl Order {
                 }
             };
 
-            Ok(format!("{}{}", conf.external_uri, a.url()))
+            Ok(external_uri.0.join(&a.url()).unwrap().to_string())
         }).collect::<Vec<_>>().await.into_iter().collect::<Result<Vec<_>, _>>()?;
 
         let cert = match ca_obj.certificate_id {
@@ -206,8 +210,10 @@ impl Order {
             not_after: crate::util::proto_to_chrono(ca_obj.not_after),
             error: None,
             authorizations,
-            finalize: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::order_finalize(crate::util::uuid_as_b64(&self.id))).to_string()),
-            certificate: cert.map(|c| format!("{}{}", conf.external_uri, c.url())),
+            finalize: external_uri.0.join(
+                &rocket::uri!(crate::acme::order_finalize(crate::util::uuid_as_b64(&self.id))).to_string()
+            ).unwrap().to_string(),
+            certificate: cert.map(|c| external_uri.0.join(&c.url()).unwrap().to_string()),
         })
     }
 }
@@ -226,7 +232,7 @@ impl Authorization {
     }
 
     pub(crate) fn to_json(
-        &self, ca_obj: crate::cert_order::Authorization, conf: &crate::acme::Config,
+        &self, ca_obj: crate::cert_order::Authorization, external_uri: &crate::acme::ExternalURL
     ) -> crate::acme::ACMEResult<crate::types::authorization::Authorization> {
         Ok(crate::types::authorization::Authorization {
             identifier: super::processing::map_rpc_identifier(
@@ -242,13 +248,13 @@ impl Authorization {
                 None => return Err(crate::internal_server_error!())
             },
             expires: crate::util::proto_to_chrono(ca_obj.expires),
-            challenges: ca_obj.challenges.into_iter().map(|c| self.challenge_to_json(c, conf)).collect::<Result<_, _>>()?,
+            challenges: ca_obj.challenges.into_iter().map(|c| self.challenge_to_json(c, external_uri)).collect::<Result<_, _>>()?,
             wildcard: ca_obj.wildcard,
         })
     }
 
     pub(crate) fn challenge_to_json(
-        &self, ca_obj: crate::cert_order::Challenge, conf: &crate::acme::Config,
+        &self, ca_obj: crate::cert_order::Challenge, external_uri: &crate::acme::ExternalURL,
     ) -> crate::acme::ACMEResult<crate::types::challenge::Challenge> {
         Ok(crate::types::challenge::Challenge {
             challenge_type: match crate::cert_order::ChallengeType::from_i32(ca_obj.r#type) {
@@ -258,10 +264,10 @@ impl Authorization {
                 Some(crate::cert_order::ChallengeType::ChallengeOnionCsr01) => crate::types::challenge::Type::OnionCSR01,
                 None => return Err(crate::internal_server_error!())
             },
-            url: format!("{}{}", conf.external_uri, rocket::uri!(crate::acme::challenge(
+            url: external_uri.0.join(&rocket::uri!(crate::acme::challenge(
                 crate::util::uuid_as_b64(&self.id),
                 BASE64_URL_SAFE_NO_PAD.encode(ca_obj.id)
-            )).to_string()),
+            )).to_string()).unwrap().to_string(),
             status: match crate::cert_order::ChallengeStatus::from_i32(ca_obj.status) {
                 Some(crate::cert_order::ChallengeStatus::ChallengePending) => crate::types::challenge::Status::Pending,
                 Some(crate::cert_order::ChallengeStatus::ChallengeProcessing) => crate::types::challenge::Status::Processing,

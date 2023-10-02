@@ -5,7 +5,7 @@ tos_agreed_to_after = "2023-03-18T00:00:00Z"
 website_uri = "https://as207960.net"
 caa_identities = ["bjorn.as207960.net"]
 ca_grpc_uri = "http://[::1]:50051"
-external_uri = "https://acme-onions.eu.ngrok.io"
+external_uris = ["https://acme-onions.eu.ngrok.io", "https://acme-onions-2.eu.ngrok.io"]
 tor_storage = "./tor-storage"
 
 [[default.acme_issuers]]

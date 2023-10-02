@@ -322,12 +322,12 @@ fn decode_jws_payload<R: serde::de::DeserializeOwned>(
 
 impl<R: serde::de::DeserializeOwned + std::fmt::Debug> JWSRequestInner<R> {
     pub async fn from_jws(
-        uri: rocket::http::uri::Path<'_>, jws: FlattenedJWS, config: &super::Config, db: &crate::DBConn,
+        uri: rocket::http::uri::Path<'_>, jws: FlattenedJWS, external_uri: &crate::acme::ExternalURL,db: &crate::DBConn,
     ) -> crate::acme::ACMEResult<Self> {
         let (header, payload_bytes, signature_bytes) =
             start_decode_jws(&jws).map_err(|e| e.1)?;
 
-        let req_url = format!("{}{}", config.external_uri, uri.as_str());
+        let req_url = external_uri.0.join(uri.as_str()).unwrap().to_string();
         if req_url != header.url {
             return Err(types::error::Error {
                 error_type: types::error::Type::Malformed,
@@ -356,7 +356,7 @@ impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDat
     type Error = types::error::Error;
 
     async fn from_data(request: &'r rocket::request::Request<'_>, data: rocket::data::Data<'r>) -> rocket::data::Outcome<'r, Self> {
-        let global_config = match request.guard::<&rocket::State<super::Config>>().await {
+        let external_uri = match request.guard::<super::ExternalURL>().await {
             rocket::request::Outcome::Success(v) => v,
             rocket::request::Outcome::Failure(_) => {
                 return rocket::data::Outcome::Failure((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
@@ -399,7 +399,7 @@ impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDat
             return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, err));
         }
 
-        let req_url = format!("{}{}", global_config.external_uri, request.uri());
+        let req_url = external_uri.0.join(&request.uri().to_string()).unwrap().to_string();
         if req_url != header.url {
             return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, types::error::Error {
                 error_type: types::error::Type::Malformed,

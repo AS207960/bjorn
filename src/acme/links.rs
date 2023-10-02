@@ -12,12 +12,12 @@ pub struct LinksHeaders<R> {
 }
 
 impl<R> LinksHeaders<R> {
-    pub fn new_links(responder: R, links: Vec<LinkHeader>, config: &crate::acme::Config) -> Self {
+    pub fn new_links(responder: R, links: Vec<LinkHeader>, external_uri: &crate::acme::ExternalURL) -> Self {
         let mut result = vec![];
         for link in links {
             let url = match link.relative {
                 false => link.url,
-                true => format!("{}{}", config.external_uri, link.url)
+                true => external_uri.0.join(&link.url).unwrap().to_string(),
             };
             result.push((url, link.relation));
         }

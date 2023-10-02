@@ -61,7 +61,7 @@ impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a>> rocket::response::Respo
 impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a> + 'r + 'a> ACMEResponse<'r, 'a, R> {
     pub async fn new(
         r: InnerACMEResponse<'r, 'a, R>, mut extra_links: Vec<super::links::LinkHeader>,
-        db: &crate::DBConn, config: &crate::acme::Config
+        db: &crate::DBConn, external_uri: &crate::acme::ExternalURL
     ) -> ACMEResponse<'r, 'a, R> {
         extra_links.push(super::links::LinkHeader {
             url: super::DIRECTORY_URI.to_string(),
@@ -70,7 +70,7 @@ impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a> + 'r + 'a> ACMEResponse<
         });
         match super::replay::ReplayNonce::new_nonce(
             db,
-            super::links::LinksHeaders::new_links(r, extra_links, config)
+            super::links::LinksHeaders::new_links(r, extra_links, external_uri)
         ).await {
             Ok(r) => ACMEResponse::Normal(r),
             Err(e) => {
@@ -80,7 +80,7 @@ impl<'r, 'a: 'r, R: rocket::response::Responder<'r, 'a> + 'r + 'a> ACMEResponse<
         }
     }
 
-    pub async fn new_error(err: types::error::Error, db: &crate::DBConn, config: &crate::acme::Config) -> ACMEResponse<'r, 'a, R> {
-        ACMEResponse::new(InnerACMEResponse::Error(rocket::serde::json::Json(err)), vec![], db, config).await
+    pub async fn new_error(err: types::error::Error, db: &crate::DBConn, external_uri: &crate::acme::ExternalURL) -> ACMEResponse<'r, 'a, R> {
+        ACMEResponse::new(InnerACMEResponse::Error(rocket::serde::json::Json(err)), vec![], db, external_uri).await
     }
 }
