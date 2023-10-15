@@ -325,6 +325,7 @@ pub struct ConfigFairing();
 pub struct Config {
     external_uri: Vec<reqwest::Url>,
     external_account_required: bool,
+    in_band_onion_caa_required: Option<bool>,
     caa_identities: Vec<String>,
     tos_uri: Option<String>,
     tos_agreed_to_after: Option<DateTime<Utc>>,
@@ -371,6 +372,17 @@ impl rocket::fairing::Fairing for ConfigFairing {
             Err(e) => {
                 if let figment::error::Kind::MissingField(_) = e.kind {
                     false
+                } else {
+                    error!("Unable to load external account required from config: {}", e);
+                    return Err(rocket);
+                }
+            }
+        };
+        let in_band_onion_caa_required = match rocket.figment().extract_inner::<bool>("in_band_onion_caa_required") {
+            Ok(v) => Some(v),
+            Err(e) => {
+                if let figment::error::Kind::MissingField(_) = e.kind {
+                    None
                 } else {
                     error!("Unable to load external account required from config: {}", e);
                     return Err(rocket);
@@ -449,6 +461,7 @@ impl rocket::fairing::Fairing for ConfigFairing {
                 external_uri,
                 caa_identities,
                 external_account_required,
+                in_band_onion_caa_required,
                 tos_uri,
                 tos_agreed_to_after,
                 website_uri,
@@ -720,6 +733,7 @@ pub fn directory(ua: ACMEResult<ClientData>, conf: &rocket::State<Config>, exter
             website: conf.website_uri.clone(),
             caa_identities: conf.caa_identities.clone(),
             external_account_required: Some(conf.external_account_required),
+            in_band_onion_caa_required: conf.in_band_onion_caa_required,
         }),
     }), rocket::http::Status::Ok))
 }
@@ -1351,10 +1365,38 @@ pub async fn order_finalize_post(
         }
     };
 
+    let onion_caa = match order_finalize.onion_caa.into_iter().map(|(k, v)| {
+        let signature = match BASE64_URL_SAFE_NO_PAD.decode(&v.signature) {
+            Ok(c) => c,
+            Err(_) => return Err(types::error::Error {
+                error_type: types::error::Type::Malformed,
+                status: 400,
+                title: "Bad CAA signature".to_string(),
+                detail: "Invalid Base64 encoding for the Onion CAA signature".to_string(),
+                sub_problems: vec![],
+                instance: None,
+                identifier: Some(types::identifier::Identifier {
+                    id_type: "dns".to_string(),
+                    value: k
+                }),
+            })
+        };
+        Ok((k, crate::cert_order::OnionCaa {
+            caa: v.caa,
+            expiry: v.expiry,
+            signature
+        }))
+    }).collect::<Result<_, _>>() {
+        Ok(v) => v,
+        Err(e) => return responses::ACMEResponse::new_error(e, &db, &external_uri).await
+    };
+
     let mut client = client.inner().clone();
     let order_result = try_result!(try_tonic_result(client.finalize_order(crate::cert_order::FinalizeOrderRequest {
         id: existing_order.ca_id.clone(),
         csr,
+        account_uri: external_uri.0.join(&acct_key.inner.kid()).unwrap().to_string(),
+        onion_caa,
     }).await), db, external_uri);
 
     let ca_order = try_result!(processing::unwrap_order_response(order_result.into_inner()), db, external_uri);
@@ -1492,7 +1534,6 @@ pub async fn challenge_post(
                 id: cid,
                 auth_id: existing_authz.ca_id.clone(),
                 account_thumbprint,
-                account_uri: external_uri.0.join(&acct_key.inner.kid()).unwrap().to_string(),
                 response: match chall_response.csr {
                     Some(csr) => {
                         let csr = match BASE64_URL_SAFE.decode(csr) {

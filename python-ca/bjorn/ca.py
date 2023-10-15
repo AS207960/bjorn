@@ -1,7 +1,7 @@
 import traceback
 import typing
-
-from . import models
+import google.protobuf.json_format
+from . import models, order_pb2, order_pb2_grpc
 from django.conf import settings
 from django.utils import timezone
 import datetime
@@ -42,10 +42,12 @@ def build_cert(
         ), critical=False
     )
     builder = builder.add_extension(
-        cryptography.x509.BasicConstraints(ca=False, path_length=None), critical=True
+        cryptography.x509.BasicConstraints(ca=False, path_length=None),
+        critical=True
     )
     builder = builder.add_extension(
-        cryptography.x509.SubjectKeyIdentifier.from_public_key(csr.public_key()), critical=False
+        cryptography.x509.SubjectKeyIdentifier.from_public_key(csr.public_key()),
+        critical=False
     )
     builder = builder.add_extension(
         cryptography.x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_cert_obj.public_key()),
@@ -55,13 +57,15 @@ def build_cert(
         cryptography.x509.KeyUsage(
             digital_signature=True, key_encipherment=True, content_commitment=False, data_encipherment=False,
             key_agreement=False, key_cert_sign=False, encipher_only=False, decipher_only=False, crl_sign=False,
-        ), critical=True
+        ),
+        critical=True
     )
     builder = builder.add_extension(
         cryptography.x509.ExtendedKeyUsage(usages=[
             cryptography.x509.ExtendedKeyUsageOID.SERVER_AUTH,
             cryptography.x509.ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]), critical=False
+        ]),
+        critical=False
     )
 
     if issuer_cert.crl_url:
@@ -73,7 +77,8 @@ def build_cert(
                     ],
                     relative_name=None, crl_issuer=None, reasons=None
                 )
-            ]), critical=False
+            ]),
+            critical=False
         )
 
     access_descriptions = []
@@ -88,7 +93,10 @@ def build_cert(
             access_location=cryptography.x509.UniformResourceIdentifier(issuer_cert.ocsp_responder_url)
         ))
     if len(access_descriptions):
-        builder = builder.add_extension(cryptography.x509.AuthorityInformationAccess(access_descriptions))
+        builder = builder.add_extension(
+            cryptography.x509.AuthorityInformationAccess(access_descriptions),
+            critical=False
+        )
 
     return builder
 
@@ -151,8 +159,32 @@ class SCTList:
         return bytes(out)
 
 
-def sign_order(order: models.Order):
+def sign_order(order: models.Order, validator_stub: order_pb2_grpc.ValidatorStub):
     try:
+        for identifier in order.identifiers.all():
+            chall: models.AuthorizationChallenge = identifier.authorization.challenges.filter(
+                validated_at__isnull=False
+            ).first()
+            if chall.type == chall.TYPE_HTTP01:
+                validation_method = order_pb2.Http01
+            elif chall.type == chall.TYPE_DNS01:
+                validation_method = order_pb2.Dns01
+            elif chall.type == chall.TYPE_TLSALPN01:
+                validation_method = order_pb2.TlsAlpn01
+            else:
+                return
+
+            req = order_pb2.CAACheckRequest(
+                validation_method=validation_method,
+                identifier=chall.authorization.id_rpc,
+            )
+            res = validator_stub.CheckCAA(req)
+            if not res.valid:
+                if res.error:
+                    order.error = google.protobuf.json_format.MessageToDict(res.error)
+                order.save()
+                return
+
         chain_bytes = []
         issed_by = INTERMEDIATE_CA
         while issed_by:

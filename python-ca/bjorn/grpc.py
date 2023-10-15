@@ -216,25 +216,28 @@ class CAServicer(order_pb2_grpc.CAServicer):
 
                 if existing_auth:
                     authorizations.append(existing_auth)
+                    i.authorization = existing_auth
                 else:
                     authorizations.append(authorization)
+                    i.authorization = authorization
                     challenges.append(challenge_http_01)
                     challenges.append(challenge_tls_alpn_01)
             else:
                 authorizations.append(authorization)
+                i.authorization = authorization
                 challenges.append(challenge_http_01)
                 challenges.append(challenge_tls_alpn_01)
 
         with transaction.atomic():
             order.save()
-            for i in identifiers:
-                i.save()
             for a in authorizations:
                 a.save()
                 models.OrderAuthorization(
                     order=order,
                     authorization=a,
                 ).save()
+            for i in identifiers:
+                i.save()
             for c in challenges:
                 c.save()
 
@@ -373,7 +376,7 @@ class CAServicer(order_pb2_grpc.CAServicer):
 
     def FinalizeOrder(self, request: order_pb2.FinalizeOrderRequest, context):
         oid = uuid.UUID(bytes=request.id)
-        order = models.Order.objects.filter(id=oid).first()
+        order: models.Order = models.Order.objects.filter(id=oid).first()
 
         if not order:
             context.set_details("Requested order not found")

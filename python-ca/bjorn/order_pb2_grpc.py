@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from . import order_pb2 as order__pb2
+import order_pb2 as order__pb2
 
 
 class CAStub(object):
@@ -481,6 +481,16 @@ class ValidatorStub(object):
                 request_serializer=order__pb2.KeyValidationRequest.SerializeToString,
                 response_deserializer=order__pb2.ValidationResult.FromString,
                 )
+        self.ValidateOnionCSR01 = channel.unary_unary(
+                '/cert_order.Validator/ValidateOnionCSR01',
+                request_serializer=order__pb2.OnionCSRValidationRequest.SerializeToString,
+                response_deserializer=order__pb2.ValidationResult.FromString,
+                )
+        self.CheckCAA = channel.unary_unary(
+                '/cert_order.Validator/CheckCAA',
+                request_serializer=order__pb2.CAACheckRequest.SerializeToString,
+                response_deserializer=order__pb2.ValidationResult.FromString,
+                )
 
 
 class ValidatorServicer(object):
@@ -504,6 +514,18 @@ class ValidatorServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ValidateOnionCSR01(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckCAA(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ValidatorServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -520,6 +542,16 @@ def add_ValidatorServicer_to_server(servicer, server):
             'ValidateTLSALPN01': grpc.unary_unary_rpc_method_handler(
                     servicer.ValidateTLSALPN01,
                     request_deserializer=order__pb2.KeyValidationRequest.FromString,
+                    response_serializer=order__pb2.ValidationResult.SerializeToString,
+            ),
+            'ValidateOnionCSR01': grpc.unary_unary_rpc_method_handler(
+                    servicer.ValidateOnionCSR01,
+                    request_deserializer=order__pb2.OnionCSRValidationRequest.FromString,
+                    response_serializer=order__pb2.ValidationResult.SerializeToString,
+            ),
+            'CheckCAA': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckCAA,
+                    request_deserializer=order__pb2.CAACheckRequest.FromString,
                     response_serializer=order__pb2.ValidationResult.SerializeToString,
             ),
     }
@@ -579,6 +611,40 @@ class Validator(object):
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/ValidateTLSALPN01',
             order__pb2.KeyValidationRequest.SerializeToString,
+            order__pb2.ValidationResult.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def ValidateOnionCSR01(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/ValidateOnionCSR01',
+            order__pb2.OnionCSRValidationRequest.SerializeToString,
+            order__pb2.ValidationResult.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CheckCAA(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cert_order.Validator/CheckCAA',
+            order__pb2.CAACheckRequest.SerializeToString,
             order__pb2.ValidationResult.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

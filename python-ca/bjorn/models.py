@@ -44,6 +44,7 @@ class Order(models.Model):
     expires_at = models.DateTimeField()
     csr = models.BinaryField(blank=True, null=True)
     certificate = models.OneToOneField('Certificate', on_delete=models.SET_NULL, blank=True, null=True, related_name='orders')
+    error = models.JSONField(blank=True, null=True)
 
     @property
     def rpc_status(self):
@@ -51,6 +52,8 @@ class Order(models.Model):
 
         if self.certificate:
             return order_pb2.OrderValid
+        elif self.error:
+            return order_pb2.OrderInvalid
         elif self.csr:
             return order_pb2.OrderProcessing
         elif self.expires_at <= timezone.now():
@@ -70,6 +73,11 @@ class Order(models.Model):
     def to_rpc(self):
         authorizations = list(self.authorizations.all())
 
+        errors = None
+        if self.error:
+            errors = order_pb2.ErrorResponse()
+            google.protobuf.json_format.ParseDict(self.error, errors, ignore_unknown_fields=True)
+
         o = order_pb2.Order(
             id=self.id.bytes,
             identifiers=[i.to_rpc() for i in self.identifiers.all()],
@@ -77,6 +85,7 @@ class Order(models.Model):
             not_after=None,
             status=self.rpc_status,
             authorizations=[a.authorization.id.bytes for a in authorizations],
+            error=errors
         )
         o.expires.FromDatetime(self.expires_at)
         if self.certificate:
@@ -96,19 +105,6 @@ def id_to_rpc(id_type, identifier):
         identifier=identifier,
         id_type=order_pb2.DNSIdentifier if id_type == ID_DNS else order_pb2.UnknownIdentifier
     )
-
-
-class OrderIdentifier(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='identifiers')
-    id_type = models.CharField(max_length=64, choices=IDENTIFIERS)
-    identifier = models.TextField()
-
-    def __str__(self):
-        return f"{self.get_id_type_display()}: {self.identifier}"
-
-    def to_rpc(self):
-        return id_to_rpc(self.id_type, self.identifier)
 
 
 class Authorization(models.Model):
@@ -172,6 +168,20 @@ class Authorization(models.Model):
         )
         a.expires.FromDatetime(self.expires_at)
         return a
+
+
+class OrderIdentifier(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='identifiers')
+    id_type = models.CharField(max_length=64, choices=IDENTIFIERS)
+    authorization = models.ForeignKey(Authorization, on_delete=models.SET_NULL, related_name='identifiers', null=True, blank=True)
+    identifier = models.TextField()
+
+    def __str__(self):
+        return f"{self.get_id_type_display()}: {self.identifier}"
+
+    def to_rpc(self):
+        return id_to_rpc(self.id_type, self.identifier)
 
 
 class AuthorizationChallenge(models.Model):

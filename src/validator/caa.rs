@@ -1,3 +1,6 @@
+use std::str::FromStr;
+use ed25519_dalek::Verifier;
+
 #[derive(Debug)]
 pub enum CAAError {
     ServFail,
@@ -8,17 +11,9 @@ pub enum CAAError {
 pub type CAAResult<T> = Result<T, CAAError>;
 
 pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
-    validator: &super::Validator<S>, domain: &str, hs_priv_key: Option<&[u8; 32]>
+    validator: &super::Validator<S>, domain: &str, hs_priv_key: Option<&[u8; 32]>,
+    onion_caa: Option<&crate::cert_order::OnionCaa>,
 ) -> CAAResult<Vec<trust_dns_proto::rr::rdata::CAA>> {
-    let client = match validator.tor_client {
-        Some(ref c) => c,
-        None => return Err(CAAError::ServFail)
-    };
-
-    if !client.ready().await {
-        return Err(CAAError::Other("Unable to connect to the Tor network".to_string()));
-    }
-
     let hs_address = match torrosion::hs::HSAddress::from_str(domain) {
         Ok(hs) => hs,
         Err(e) => {
@@ -26,32 +21,75 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         }
     };
 
-    let (
-        descriptor, first_layer, blinded_key, hs_subcred
-    ) = match hs_address.fetch_ds_first_layer(&client).await {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(CAAError::Other(format!("Failed to fetch HS descriptor: {}", e)));
-        }
-    };
+    let caa_records = if let Some(onion_caa) = onion_caa {
+        let now = chrono::Utc::now().timestamp();
 
-    let is_caa_critical = first_layer.caa_critical;
-
-    let second_layer = match torrosion::hs::HSAddress::get_ds_second_layer(
-        descriptor, first_layer, hs_priv_key.copied(), &blinded_key, &hs_subcred
-    ).await {
-        Ok(v) => v,
-        Err(e) => {
-            info!("Failed to fetch second layer for {}: {}", domain, e);
-            if is_caa_critical {
-                return Err(CAAError::UnsupportedCritical("CAA is critical but failed to read second layer".to_string()));
-            } else {
-                return Ok(Vec::new());
+        let vk = match ed25519_dalek::VerifyingKey::from_bytes(&hs_address.key) {
+            Ok(vk) => vk,
+            Err(e) => {
+                return Err(CAAError::Other(format!("Invalid HS address key: {}", e)));
             }
+        };
+
+        let tbs = format!("onion-caa|{}|{}", onion_caa.expiry, onion_caa.caa);
+        let sig = match ed25519_dalek::Signature::from_slice(&onion_caa.signature) {
+            Ok(sig) => sig,
+            Err(e) => {
+                return Err(CAAError::Other(format!("Invalid CAA signature: {}", e)));
+            }
+        };
+        vk.verify(tbs.as_bytes(), &sig).map_err(|e| {
+            CAAError::Other(format!("Invalid CAA signature: {}", e))
+        })?;
+
+        if now > onion_caa.expiry {
+            return Err(CAAError::Other("CAA record expired".to_string()));
         }
+
+        onion_caa.caa.split("\n").map(|l| l.trim())
+            .map(torrosion::hs::second_layer::CAA::from_str).collect::<Result<Vec<_>, _>>()
+            .map_err(|_| CAAError::Other(format!("Invalid CAA record")))?
+    } else {
+        let client = match validator.tor_client {
+            Some(ref c) => c,
+            None => return Err(CAAError::Other(
+                "This server does not support connections to the Tor network, try in-band CAA".to_string()
+            ))
+        };
+
+        if !client.ready().await {
+            return Err(CAAError::Other("Unable to connect to the Tor network".to_string()));
+        }
+
+        let (
+            descriptor, first_layer, blinded_key, hs_subcred
+        ) = match hs_address.fetch_ds_first_layer(&client).await {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(CAAError::Other(format!("Failed to fetch HS descriptor: {}", e)));
+            }
+        };
+
+        let is_caa_critical = first_layer.caa_critical;
+
+        let second_layer = match torrosion::hs::HSAddress::get_ds_second_layer(
+            descriptor, first_layer, hs_priv_key.copied(), &blinded_key, &hs_subcred
+        ).await {
+            Ok(v) => v,
+            Err(e) => {
+                info!("Failed to fetch second layer for {}: {}", domain, e);
+                if is_caa_critical {
+                    return Err(CAAError::UnsupportedCritical("CAA is critical but failed to read second layer".to_string()));
+                } else {
+                    return Ok(Vec::new());
+                }
+            }
+        };
+
+        second_layer.caa
     };
 
-    Ok(second_layer.caa.into_iter().map(|caa| {
+    Ok(caa_records.into_iter().map(|caa| {
         let tag = trust_dns_proto::rr::rdata::caa::Property::from(caa.tag);
 
         let value =  match &tag {
@@ -79,12 +117,13 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
 }
 
 pub async fn find_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
-    validator: &super::Validator<S>, identifier: &super::Identifier, hs_priv_key: Option<&[u8; 32]>
+    validator: &super::Validator<S>, identifier: &super::Identifier, hs_priv_key: Option<&[u8; 32]>,
+    onion_caa: Option<&crate::cert_order::OnionCaa>,
 ) -> CAAResult<Vec<trust_dns_proto::rr::rdata::CAA>> {
     match identifier {
         super::Identifier::Domain(domain, _) => {
             if domain.ends_with(".onion") {
-                return find_hs_caa_record(validator, domain, hs_priv_key).await;
+                return find_hs_caa_record(validator, domain, hs_priv_key, onion_caa).await;
             } else {
                 let mut domain = domain.trim_end_matches('.').split(".").collect::<Vec<_>>();
                 while !domain.is_empty() {
@@ -289,7 +328,7 @@ fn parse_caa_policy(rdata: &[trust_dns_proto::rr::rdata::CAA]) -> CAAResult<CAAP
 
 pub async fn verify_caa_record<S: torrosion::storage::Storage + Send + Sync + 'static>(
     validator: &super::Validator<S>, identifier: &super::Identifier, validation_method: &str,
-    account_uri: Option<&str>, hs_priv_key: Option<&[u8; 32]>
+    account_uri: Option<&str>, hs_priv_key: Option<&[u8; 32]>, onion_caa: Option<&crate::cert_order::OnionCaa>,
 ) -> CAAResult<bool> {
     let is_wild = match identifier {
         super::Identifier::Domain(_, is_wild) => *is_wild,
@@ -300,7 +339,7 @@ pub async fn verify_caa_record<S: torrosion::storage::Storage + Send + Sync + 's
         return Ok(true);
     }
 
-    let records = find_caa_record(validator, identifier, hs_priv_key).await?;
+    let records = find_caa_record(validator, identifier, hs_priv_key, onion_caa).await?;
     let policy = parse_caa_policy(&records)?;
 
     if !is_wild {

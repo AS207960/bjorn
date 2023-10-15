@@ -56,4 +56,13 @@ pub struct OrderCreate {
 #[derive(Debug, Deserialize)]
 pub struct OrderFinalize {
     pub csr: String,
+    #[serde(default, rename = "onionCAA")]
+    pub onion_caa: std::collections::HashMap<String, OnionCAA>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OnionCAA {
+    pub caa: String,
+    pub expiry: i64,
+    pub signature: String,
 }

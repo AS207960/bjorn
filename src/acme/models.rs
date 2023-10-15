@@ -208,7 +208,10 @@ impl Order {
             identifiers: ca_obj.identifiers.into_iter().map(super::processing::map_rpc_identifier).collect(),
             not_before: crate::util::proto_to_chrono(ca_obj.not_before),
             not_after: crate::util::proto_to_chrono(ca_obj.not_after),
-            error: None,
+            error: ca_obj.error.and_then(|errors| crate::util::error_list_to_result(
+                errors.errors.into_iter().map(crate::acme::processing::rpc_error_to_problem).collect(),
+                "Multiple errors make this order invalid".to_string(),
+            ).err()),
             authorizations,
             finalize: external_uri.0.join(
                 &rocket::uri!(crate::acme::order_finalize(crate::util::uuid_as_b64(&self.id))).to_string()

@@ -85,22 +85,43 @@ service Validator {
   rpc ValidateDNS01 (KeyValidationRequest) returns (ValidationResult) {}
   rpc ValidateTLSALPN01 (KeyValidationRequest) returns (ValidationResult) {}
   rpc ValidateOnionCSR01 (OnionCSRValidationRequest) returns (ValidationResult) {}
+  rpc CheckCAA (CAACheckRequest) returns (ValidationResult) {}
 }
 
 message KeyValidationRequest {
+  reserved 4;
   string token = 1;
   string account_thumbprint = 2;
   Identifier identifier = 3;
-  google.protobuf.StringValue account_uri = 4;
   bytes hs_private_key = 5;
 }
 
 message OnionCSRValidationRequest {
+  reserved 4, 5;
   bytes csr = 1;
   bytes ca_nonce = 2;
   Identifier identifier = 3;
-  google.protobuf.StringValue account_uri = 4;
-  bytes hs_private_key = 5;
+}
+
+enum ValidationMethod {
+  Http01 = 0;
+  Dns01 = 1;
+  TlsAlpn01 = 2;
+  OnionCSR01 = 3;
+}
+
+message CAACheckRequest {
+  ValidationMethod validation_method = 1;
+  Identifier identifier = 2;
+  google.protobuf.StringValue account_uri = 3;
+  bytes hs_private_key = 4;
+  OnionCAA onion_caa = 5;
+}
+
+message OnionCAA {
+  string caa = 1;
+  int64 expiry = 2;
+  bytes signature = 3;
 }
 
 message ValidationResult {
@@ -171,10 +192,10 @@ message ChallengeIDRequest {
 }
 
 message CompleteChallengeRequest {
+  reserved 4;
   bytes id = 1;
   bytes auth_id = 2;
   string account_thumbprint = 3;
-  string account_uri = 4;
   oneof response {
     bytes csr = 5;
   }
@@ -183,6 +204,8 @@ message CompleteChallengeRequest {
 message FinalizeOrderRequest {
   bytes id = 1;
   bytes csr = 2;
+  string account_uri = 3;
+  map<string, OnionCAA> onion_caa = 4;
 }
 
 enum OrderStatus {
@@ -200,6 +223,7 @@ message Order {
   google.protobuf.Timestamp not_after = 4;
   google.protobuf.Timestamp expires = 5;
   OrderStatus status = 6;
+  ErrorResponse error = 9;
   repeated bytes authorizations = 7;
   google.protobuf.BytesValue certificate_id = 8;
 }

@@ -54,14 +54,14 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> Validator<S> {
 
 async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
     validator: &Validator<S>, identifier: &Identifier, validation_method: &str,
-    account_uri: Option<&str>, hs_priv_key: Option<&[u8; 32]>
-) -> Option<crate::cert_order::ValidationResult> {
+    account_uri: Option<&str>, hs_priv_key: Option<&[u8; 32]>, onion_caa: Option<&crate::cert_order::OnionCaa>,
+) -> crate::cert_order::ValidationResult {
     let caa_res = match caa::verify_caa_record(
-        validator, identifier, validation_method, account_uri, hs_priv_key
+        validator, identifier, validation_method, account_uri, hs_priv_key, onion_caa
     ).await {
         Ok(r) => r,
         Err(err) => match err {
-            caa::CAAError::ServFail => return Some(crate::cert_order::ValidationResult {
+            caa::CAAError::ServFail => return crate::cert_order::ValidationResult {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
@@ -74,8 +74,8 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         sub_problems: vec![],
                     }]
                 }),
-            }),
-            caa::CAAError::UnsupportedCritical(e) => return Some(crate::cert_order::ValidationResult {
+            },
+            caa::CAAError::UnsupportedCritical(e) => return crate::cert_order::ValidationResult {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
@@ -88,8 +88,8 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         sub_problems: vec![],
                     }]
                 }),
-            }),
-            caa::CAAError::Other(e) => return Some(crate::cert_order::ValidationResult {
+            },
+            caa::CAAError::Other(e) => return crate::cert_order::ValidationResult {
                 valid: false,
                 error: Some(crate::cert_order::ErrorResponse {
                     errors: vec![crate::cert_order::Error {
@@ -102,12 +102,17 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         sub_problems: vec![],
                     }]
                 }),
-            }),
+            },
         }
     };
 
-    if !caa_res {
-        return Some(crate::cert_order::ValidationResult {
+   if caa_res {
+       crate::cert_order::ValidationResult {
+           valid: true,
+           error: None,
+       }
+   } else {
+        crate::cert_order::ValidationResult {
             valid: false,
             error: Some(crate::cert_order::ErrorResponse {
                 errors: vec![crate::cert_order::Error {
@@ -120,10 +125,8 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                     sub_problems: vec![],
                 }]
             }),
-        });
+        }
     }
-
-    None
 }
 
 fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<Identifier, tonic::Status> {
@@ -159,6 +162,35 @@ impl<T> RW for T where T: tokio::io::AsyncRead + tokio::io::AsyncWrite {}
 
 #[tonic::async_trait]
 impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::validator_server::Validator for Validator<S> {
+    async fn check_caa(
+        &self, request: tonic::Request<crate::cert_order::CaaCheckRequest>,
+    ) -> Result<tonic::Response<crate::cert_order::ValidationResult>, tonic::Status> {
+        let req = request.into_inner();
+        let identifier = map_identifier(req.identifier.clone())?;
+
+        let hs_priv_key = if req.hs_private_key.len() == 0 {
+            None
+        } else if req.hs_private_key.len() == 32 {
+            Some(std::convert::TryInto::<[u8; 32]>::try_into(req.hs_private_key.as_slice()).unwrap())
+        } else {
+            return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
+        };
+
+        let validation_method = match crate::cert_order::ValidationMethod::from_i32(req.validation_method) {
+            Some(crate::cert_order::ValidationMethod::Http01) => "http-01",
+            Some(crate::cert_order::ValidationMethod::Dns01) => "dns-01",
+            Some(crate::cert_order::ValidationMethod::TlsAlpn01) => "tls-alpn-01",
+            Some(crate::cert_order::ValidationMethod::OnionCsr01) => "onion-csr-01",
+            _ => return Err(tonic::Status::invalid_argument("Invalid validation method specified")),
+        };
+
+        Ok(tonic::Response::new( check_caa(
+            self, &identifier, validation_method,
+            req.account_uri.as_deref(), hs_priv_key.as_ref(),
+            req.onion_caa.as_ref()
+        ).await))
+    }
+
     async fn validate_http01(
         &self, request: tonic::Request<crate::cert_order::KeyValidationRequest>,
     ) -> Result<tonic::Response<crate::cert_order::ValidationResult>, tonic::Status> {
@@ -172,13 +204,6 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         } else {
             return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
         };
-
-        if let Some(caa_err) = check_caa(
-            self, &identifier, "http-01",
-            req.account_uri.as_deref(), hs_priv_key.as_ref(),
-        ).await {
-            return Ok(tonic::Response::new(caa_err));
-        }
 
         let (test_uri, is_tor) = match identifier {
             Identifier::Domain(domain, wildcard) => {
@@ -416,13 +441,6 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         let req = request.into_inner();
         let identifier = map_identifier(req.identifier.clone())?;
 
-        if let Some(caa_err) = check_caa(
-            self, &identifier, "dns-01",
-            req.account_uri.as_deref(), None
-        ).await {
-            return Ok(tonic::Response::new(caa_err));
-        }
-
         let key_auth = format!("{}.{}", req.token, req.account_thumbprint);
         let key_auth_hash_bytes = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), key_auth.as_bytes()).unwrap().to_vec();
         let key_auth_hash = BASE64_URL_SAFE_NO_PAD.encode(&key_auth_hash_bytes);
@@ -512,13 +530,6 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
         } else {
             return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
         };
-
-        if let Some(caa_err) = check_caa(
-            self, &identifier, "tls-alpn-01",
-            req.account_uri.as_deref(), hs_priv_key.as_ref()
-        ).await {
-            return Ok(tonic::Response::new(caa_err));
-        }
 
         let (connection_string, sni_string, ip_bytes, is_tor) = match identifier {
             Identifier::Domain(domain, wildcard) => {
@@ -918,21 +929,6 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
     ) -> Result<tonic::Response<crate::cert_order::ValidationResult>, tonic::Status> {
         let req = request.into_inner();
         let identifier = map_identifier(req.identifier.clone())?;
-
-        let hs_priv_key = if req.hs_private_key.len() == 0 {
-            None
-        } else if req.hs_private_key.len() == 32 {
-            Some(std::convert::TryInto::<[u8; 32]>::try_into(req.hs_private_key.as_slice()).unwrap())
-        } else {
-            return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
-        };
-
-        if let Some(caa_err) = check_caa(
-            self, &identifier, "onion-csr-01",
-            req.account_uri.as_deref(), hs_priv_key.as_ref()
-        ).await {
-            return Ok(tonic::Response::new(caa_err));
-        }
 
         let hs_addr = match identifier {
             Identifier::Domain(domain, _) => {

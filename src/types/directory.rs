@@ -25,5 +25,7 @@ pub struct Meta {
     #[serde(rename = "caaIdentities", skip_serializing_if = "Vec::is_empty")]
     pub caa_identities: Vec<String>,
     #[serde(rename = "externalAccountRequired", skip_serializing_if = "Option::is_none")]
-    pub external_account_required: Option<bool>
+    pub external_account_required: Option<bool>,
+    #[serde(rename = "inBandOnionCAARequired", skip_serializing_if = "Option::is_none")]
+    pub in_band_onion_caa_required: Option<bool>
 }
