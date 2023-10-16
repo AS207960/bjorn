@@ -11,6 +11,53 @@ pub enum Identifier {
     Email(String),
 }
 
+fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<Identifier, tonic::Status> {
+    if let Some(identifier) = identifier {
+        Ok(match crate::cert_order::IdentifierType::from_i32(identifier.id_type) {
+            Some(crate::cert_order::IdentifierType::DnsIdentifier) => {
+                let is_wild = identifier.identifier.starts_with("*.");
+                if is_wild {
+                    Identifier::Domain(identifier.identifier[2..].to_string(), true)
+                } else {
+                    Identifier::Domain(identifier.identifier, false)
+                }
+            }
+            Some(crate::cert_order::IdentifierType::IpIdentifier) => {
+                let ip_addr: std::net::IpAddr = match std::str::FromStr::from_str(&identifier.identifier) {
+                    Ok(a) => a,
+                    Err(_) => return Err(tonic::Status::invalid_argument("Invalid IP address")),
+                };
+                Identifier::IPAddr(ip_addr)
+            }
+            Some(crate::cert_order::IdentifierType::EmailIdentifier) => {
+                Identifier::Email(identifier.identifier)
+            },
+            _ => return Err(tonic::Status::invalid_argument("Invalid identifier type specified")),
+        })
+    } else {
+        Err(tonic::Status::invalid_argument("Identifier must be specified"))
+    }
+}
+
+impl Identifier {
+    fn to_pb(&self) -> crate::cert_order::Identifier {
+        match self {
+            Identifier::Domain(d, _) => crate::cert_order::Identifier {
+                id_type: crate::cert_order::IdentifierType::DnsIdentifier.into(),
+                identifier: d.clone(),
+            },
+            Identifier::IPAddr(ip) => crate::cert_order::Identifier {
+                id_type: crate::cert_order::IdentifierType::IpIdentifier.into(),
+                identifier: ip.to_string(),
+            },
+            Identifier::Email(e) => crate::cert_order::Identifier {
+                id_type: crate::cert_order::IdentifierType::EmailIdentifier.into(),
+                identifier: e.clone(),
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Validator<S: torrosion::storage::Storage> {
     dns_resolver: trust_dns_resolver::TokioAsyncResolver,
@@ -69,7 +116,7 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         title: "CAA error".to_string(),
                         detail: "SERVFAIL when checking CAA record".to_string(),
                         status: 400,
-                        identifier: None,
+                        identifier: Some(identifier.to_pb()),
                         instance: None,
                         sub_problems: vec![],
                     }]
@@ -83,7 +130,7 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         title: "CAA error".to_string(),
                         detail: format!("Unsupported critical CAA record: {}", e),
                         status: 400,
-                        identifier: None,
+                        identifier: Some(identifier.to_pb()),
                         instance: None,
                         sub_problems: vec![],
                     }]
@@ -97,7 +144,7 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                         title: "CAA error".to_string(),
                         detail: e,
                         status: 400,
-                        identifier: None,
+                        identifier: Some(identifier.to_pb()),
                         instance: None,
                         sub_problems: vec![],
                     }]
@@ -120,40 +167,12 @@ async fn check_caa<S: torrosion::storage::Storage + Send + Sync + 'static>(
                     title: "CAA error".to_string(),
                     detail: "CAA policy prohibits issuance".to_string(),
                     status: 400,
-                    identifier: None,
+                    identifier: Some(identifier.to_pb()),
                     instance: None,
                     sub_problems: vec![],
                 }]
             }),
         }
-    }
-}
-
-fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<Identifier, tonic::Status> {
-    if let Some(identifier) = identifier {
-        Ok(match crate::cert_order::IdentifierType::from_i32(identifier.id_type) {
-            Some(crate::cert_order::IdentifierType::DnsIdentifier) => {
-                let is_wild = identifier.identifier.starts_with("*.");
-                if is_wild {
-                    Identifier::Domain(identifier.identifier[2..].to_string(), true)
-                } else {
-                    Identifier::Domain(identifier.identifier, false)
-                }
-            }
-            Some(crate::cert_order::IdentifierType::IpIdentifier) => {
-                let ip_addr: std::net::IpAddr = match std::str::FromStr::from_str(&identifier.identifier) {
-                    Ok(a) => a,
-                    Err(_) => return Err(tonic::Status::invalid_argument("Invalid IP address")),
-                };
-                Identifier::IPAddr(ip_addr)
-            }
-            Some(crate::cert_order::IdentifierType::EmailIdentifier) => {
-                Identifier::Email(identifier.identifier)
-            },
-            _ => return Err(tonic::Status::invalid_argument("Invalid identifier type specified")),
-        })
-    } else {
-        Err(tonic::Status::invalid_argument("Identifier must be specified"))
     }
 }
 

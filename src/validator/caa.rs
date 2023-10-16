@@ -24,13 +24,16 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
     let caa_records = if let Some(onion_caa) = onion_caa {
         let now = chrono::Utc::now().timestamp();
 
+        if now > onion_caa.expiry {
+            return Err(CAAError::Other("CAA record expired".to_string()));
+        }
+
         let vk = match ed25519_dalek::VerifyingKey::from_bytes(&hs_address.key) {
             Ok(vk) => vk,
             Err(e) => {
                 return Err(CAAError::Other(format!("Invalid HS address key: {}", e)));
             }
         };
-
         let tbs = format!("onion-caa|{}|{}", onion_caa.expiry, onion_caa.caa);
         let sig = match ed25519_dalek::Signature::from_slice(&onion_caa.signature) {
             Ok(sig) => sig,
@@ -41,10 +44,6 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         vk.verify(tbs.as_bytes(), &sig).map_err(|e| {
             CAAError::Other(format!("Invalid CAA signature: {}", e))
         })?;
-
-        if now > onion_caa.expiry {
-            return Err(CAAError::Other("CAA record expired".to_string()));
-        }
 
         onion_caa.caa.split("\n").map(|l| l.trim())
             .map(torrosion::hs::second_layer::CAA::from_str).collect::<Result<Vec<_>, _>>()
