@@ -79,10 +79,10 @@ pub async fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OC
         };
         single_responses.push(super::types::SingleOCSPResponse {
             cert_id: cert_req.cert_id.clone(),
-            cert_status: match crate::cert_order::CertStatus::from_i32(check_cert_resp.status) {
-                Some(crate::cert_order::CertStatus::CertGood) => super::types::CertStatus::Good,
-                Some(crate::cert_order::CertStatus::CertUnknown) => super::types::CertStatus::Unknown,
-                Some(crate::cert_order::CertStatus::CertRevoked) => super::types::CertStatus::Revoked(super::types::RevokedInfo {
+            cert_status: match crate::cert_order::CertStatus::try_from(check_cert_resp.status) {
+                Ok(crate::cert_order::CertStatus::CertGood) => super::types::CertStatus::Good,
+                Ok(crate::cert_order::CertStatus::CertUnknown) => super::types::CertStatus::Unknown,
+                Ok(crate::cert_order::CertStatus::CertRevoked) => super::types::CertStatus::Revoked(super::types::RevokedInfo {
                     revocation_time: match crate::util::proto_to_chrono(check_cert_resp.revocation_timestamp) {
                         Some(t) => t,
                         None => return super::types::OCSPResponse {
@@ -90,26 +90,26 @@ pub async fn handle_ocsp<'a>(req: &'a [u8], ocsp_issuers: &'a super::issuers::OC
                             response: None,
                         }
                     },
-                    revocation_reason: match crate::cert_order::RevocationReason::from_i32(check_cert_resp.revocation_reason) {
-                        None => None,
-                        Some(crate::cert_order::RevocationReason::RevocationUnknown) => None,
-                        Some(crate::cert_order::RevocationReason::RevocationUnspecified) => Some(super::types::RevocationReason::Unspecified),
-                        Some(crate::cert_order::RevocationReason::RevocationKeyCompromise) => Some(super::types::RevocationReason::KeyCompromise),
-                        Some(crate::cert_order::RevocationReason::RevocationCaCompromise) => Some(super::types::RevocationReason::CACompromise),
-                        Some(crate::cert_order::RevocationReason::RevocationAffiliationChanged) => Some(super::types::RevocationReason::AffiliationChanged),
-                        Some(crate::cert_order::RevocationReason::RevocationSuperseded) => Some(super::types::RevocationReason::Superseded),
-                        Some(crate::cert_order::RevocationReason::RevocationCessationOfOperation) => Some(super::types::RevocationReason::CessationOfOperation),
-                        Some(crate::cert_order::RevocationReason::RevocationCertificateHold) => Some(super::types::RevocationReason::CertificateHold),
-                        Some(crate::cert_order::RevocationReason::RevocationRemoveFromCrl) => Some(super::types::RevocationReason::RemoveFromCRL),
-                        Some(crate::cert_order::RevocationReason::RevocationPrivilegeWithdrawn) => Some(super::types::RevocationReason::PrivilegeWithdrawn),
-                        Some(crate::cert_order::RevocationReason::RevocationAaCompromise) => Some(super::types::RevocationReason::AACompromise),
+                    revocation_reason: match crate::cert_order::RevocationReason::try_from(check_cert_resp.revocation_reason) {
+                        Err(_) => None,
+                        Ok(crate::cert_order::RevocationReason::RevocationUnknown) => None,
+                        Ok(crate::cert_order::RevocationReason::RevocationUnspecified) => Some(super::types::RevocationReason::Unspecified),
+                        Ok(crate::cert_order::RevocationReason::RevocationKeyCompromise) => Some(super::types::RevocationReason::KeyCompromise),
+                        Ok(crate::cert_order::RevocationReason::RevocationCaCompromise) => Some(super::types::RevocationReason::CACompromise),
+                        Ok(crate::cert_order::RevocationReason::RevocationAffiliationChanged) => Some(super::types::RevocationReason::AffiliationChanged),
+                        Ok(crate::cert_order::RevocationReason::RevocationSuperseded) => Some(super::types::RevocationReason::Superseded),
+                        Ok(crate::cert_order::RevocationReason::RevocationCessationOfOperation) => Some(super::types::RevocationReason::CessationOfOperation),
+                        Ok(crate::cert_order::RevocationReason::RevocationCertificateHold) => Some(super::types::RevocationReason::CertificateHold),
+                        Ok(crate::cert_order::RevocationReason::RevocationRemoveFromCrl) => Some(super::types::RevocationReason::RemoveFromCRL),
+                        Ok(crate::cert_order::RevocationReason::RevocationPrivilegeWithdrawn) => Some(super::types::RevocationReason::PrivilegeWithdrawn),
+                        Ok(crate::cert_order::RevocationReason::RevocationAaCompromise) => Some(super::types::RevocationReason::AACompromise),
                     },
                 }),
-                Some(crate::cert_order::CertStatus::CertUnissued) => super::types::CertStatus::Revoked(super::types::RevokedInfo {
+                Ok(crate::cert_order::CertStatus::CertUnissued) => super::types::CertStatus::Revoked(super::types::RevokedInfo {
                     revocation_time: Utc.timestamp_opt(0, 0).unwrap(),
                     revocation_reason: Some(super::types::RevocationReason::CertificateHold),
                 }),
-                None => super::types::CertStatus::Unknown,
+                Err(_) => super::types::CertStatus::Unknown,
             },
             this_update: crate::util::proto_to_chrono(check_cert_resp.this_update).unwrap_or_else(Utc::now),
             next_update: crate::util::proto_to_chrono(check_cert_resp.next_update),

@@ -358,33 +358,33 @@ impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDat
     async fn from_data(request: &'r rocket::request::Request<'_>, data: rocket::data::Data<'r>) -> rocket::data::Outcome<'r, Self> {
         let external_uri = match request.guard::<super::ExternalURL>().await {
             rocket::request::Outcome::Success(v) => v,
-            rocket::request::Outcome::Failure(_) => {
-                return rocket::data::Outcome::Failure((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
+            rocket::request::Outcome::Error(_) => {
+                return rocket::data::Outcome::Error((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
             }
             rocket::request::Outcome::Forward(_) => unreachable!()
         };
         let db = match request.guard::<crate::DBConn>().await {
             rocket::request::Outcome::Success(v) => v,
-            rocket::request::Outcome::Failure(_) => {
-                return rocket::data::Outcome::Failure((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
+            rocket::request::Outcome::Error(_) => {
+                return rocket::data::Outcome::Error((rocket::http::Status::InternalServerError, crate::internal_server_error!()));
             }
             rocket::request::Outcome::Forward(_) => unreachable!()
         };
 
         let jws = match get_flattened_jws(request, data).await {
             Ok(v) => v,
-            Err(e) => return rocket::data::Outcome::Failure(e)
+            Err(e) => return rocket::data::Outcome::Error(e)
         };
 
         let (header, payload_bytes, signature_bytes) = match start_decode_jws(&jws) {
             Ok(v) => v,
-            Err(e) => return rocket::data::Outcome::Failure(e)
+            Err(e) => return rocket::data::Outcome::Error(e)
         };
 
         let nonce = match &header.nonce {
             Some(v) => v,
             None => {
-                return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, types::error::Error {
+                return rocket::data::Outcome::Error((rocket::http::Status::BadRequest, types::error::Error {
                     error_type: types::error::Type::Malformed,
                     status: 400,
                     title: "No nonce".to_string(),
@@ -396,12 +396,12 @@ impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDat
             }
         };
         if let Err(err) = super::replay::verify_nonce(&nonce, &db).await {
-            return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, err));
+            return rocket::data::Outcome::Error((rocket::http::Status::BadRequest, err));
         }
 
         let req_url = external_uri.0.join(&request.uri().to_string()).unwrap().to_string();
         if req_url != header.url {
-            return rocket::data::Outcome::Failure((rocket::http::Status::BadRequest, types::error::Error {
+            return rocket::data::Outcome::Error((rocket::http::Status::BadRequest, types::error::Error {
                 error_type: types::error::Type::Malformed,
                 status: 400,
                 title: "Invalid URI".to_string(),
@@ -414,13 +414,13 @@ impl<'r, R: serde::de::DeserializeOwned + std::fmt::Debug> rocket::data::FromDat
 
         let key = match verify_jws_sig(&jws, &header,  &signature_bytes, &db).await {
             Ok(v) => v,
-            Err(e) => return rocket::data::Outcome::Failure(e)
+            Err(e) => return rocket::data::Outcome::Error(e)
         };
 
         let payload = if payload_bytes.len() != 0 {
             match decode_jws_payload(&payload_bytes) {
                 Ok(v) => Some(v),
-                Err(e) => return rocket::data::Outcome::Failure(e)
+                Err(e) => return rocket::data::Outcome::Error(e)
             }
         } else {
             None

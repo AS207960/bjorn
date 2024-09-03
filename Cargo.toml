@@ -1,6 +1,6 @@
 [package]
 name = "bjorn-acme"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Q Misell <q@as207960.net>"]
 edition = "2021"
 readme = "README.md"
@@ -20,13 +20,13 @@ name = "bjorn"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
-rocket = { version = "0.5.0-rc.2", features = ["json"] }
-rocket_dyn_templates = { version = "0.1.0-rc.3", features = ["tera"] }
-rocket_sync_db_pools = { version = "0.1.0-rc.3", features = ["diesel_postgres_pool"] }
+rocket = { version = "0.5", features = ["json"] }
+rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
+rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_postgres_pool"] }
 postgres = { version = "0.19", features = ["with-chrono-0_4", "with-uuid-0_8"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde", "v4"] }
-base64 = "0.21.0"
+base64 = "0.22"
 lazy_static = "1"
 tokio-openssl = "0.6"
 openssl = "0.10"
@@ -36,23 +36,24 @@ diesel = { version = "2", features = ["postgres", "uuid", "extras"] }
 diesel_migrations = "2"
 diesel-derive-enum = { version = "2", features = ["postgres"] }
 url = "2"
-tonic = "0.9"
-prost = "0.11.8"
-prost-types = "0.11.8"
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net"] }
 hex = "0.4"
-asn1 = "0.14"
+asn1 = "0.17"
 libc = "0.2"
 foreign-types = "0.3"
-pretty_env_logger = "0.4"
-trust-dns-proto = "0.22"
-trust-dns-resolver = "0.22"
-reqwest = { version = "0.11", features = ["gzip", "brotli", "deflate"] }
+pretty_env_logger = "0.5"
+trust-dns-proto = "0.23"
+trust-dns-resolver = "0.23"
+reqwest = { version = "0.12", features = ["gzip", "brotli", "deflate"] }
 figment = "0.10"
 futures = "0.3.27"
 torrosion = "0.3"
-hyper = "0.14.25"
 ed25519-dalek = "2.0.0"
+hyper = "1.4.1"
+http-body-util = "0.1.2"
 
 [build-dependencies]
-tonic-build = "0.9"
+tonic-build = "0.12"

@@ -525,8 +525,8 @@ impl<'a> rocket::request::FromRequest<'a> for ExternalURL {
     async fn from_request(request: &'a rocket::request::Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         let conf = match request.guard::<&rocket::State<Config>>().await {
             rocket::request::Outcome::Success(c) => c,
-            rocket::request::Outcome::Failure(f) => return rocket::request::Outcome::Failure(f),
-            rocket::request::Outcome::Forward(()) => return rocket::request::Outcome::Forward(()),
+            rocket::request::Outcome::Error(f) => return rocket::request::Outcome::Error(f),
+            rocket::request::Outcome::Forward(s) => return rocket::request::Outcome::Forward(s),
         };
         match request.host() {
             Some(h) => {
@@ -577,7 +577,7 @@ impl<'a> rocket::request::FromRequest<'a> for ClientData {
                     accept: request.accept().map(|a| a.to_owned()),
                 })
             }
-            None => rocket::request::Outcome::Failure((rocket::http::Status::BadRequest, types::error::Error {
+            None => rocket::request::Outcome::Error((rocket::http::Status::BadRequest, types::error::Error {
                 error_type: types::error::Type::Malformed,
                 status: 400,
                 title: "No User-Agent".to_string(),
@@ -1942,7 +1942,7 @@ macro_rules! catcher_get_state {
         {
             let db = match $req.guard::<DBConn>().await {
                 rocket::request::Outcome::Success(v) => v,
-                rocket::request::Outcome::Failure(f) => {
+                rocket::request::Outcome::Error(f) => {
                     warn!("Failed to get DB connection in error handler: {:?}", f);
                     return responses::ACMEResponse::Raw(responses::InnerACMEResponse::Error(rocket::serde::json::Json(internal_server_error!())))
                 }
@@ -1950,7 +1950,7 @@ macro_rules! catcher_get_state {
             };
             let external_uri = match $req.guard::<ExternalURL>().await {
                 rocket::request::Outcome::Success(v) => v,
-                rocket::request::Outcome::Failure(f) => {
+                rocket::request::Outcome::Error(f) => {
                     warn!("Failed to get external URL in error handler: {:?}", f);
                     return responses::ACMEResponse::Raw(responses::InnerACMEResponse::Error(rocket::serde::json::Json(internal_server_error!())))
                 }

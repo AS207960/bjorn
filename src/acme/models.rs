@@ -196,13 +196,13 @@ impl Order {
         };
 
         Ok(crate::types::order::Order {
-            status: match crate::cert_order::OrderStatus::from_i32(ca_obj.status) {
-                Some(crate::cert_order::OrderStatus::OrderPending) => crate::types::order::Status::Pending,
-                Some(crate::cert_order::OrderStatus::OrderReady) => crate::types::order::Status::Ready,
-                Some(crate::cert_order::OrderStatus::OrderValid) => crate::types::order::Status::Valid,
-                Some(crate::cert_order::OrderStatus::OrderInvalid) => crate::types::order::Status::Invalid,
-                Some(crate::cert_order::OrderStatus::OrderProcessing) => crate::types::order::Status::Processing,
-                None => return Err(crate::internal_server_error!())
+            status: match crate::cert_order::OrderStatus::try_from(ca_obj.status) {
+                Ok(crate::cert_order::OrderStatus::OrderPending) => crate::types::order::Status::Pending,
+                Ok(crate::cert_order::OrderStatus::OrderReady) => crate::types::order::Status::Ready,
+                Ok(crate::cert_order::OrderStatus::OrderValid) => crate::types::order::Status::Valid,
+                Ok(crate::cert_order::OrderStatus::OrderInvalid) => crate::types::order::Status::Invalid,
+                Ok(crate::cert_order::OrderStatus::OrderProcessing) => crate::types::order::Status::Processing,
+                Err(_) => return Err(crate::internal_server_error!())
             },
             expires: crate::util::proto_to_chrono(ca_obj.expires),
             identifiers: ca_obj.identifiers.into_iter().map(super::processing::map_rpc_identifier).collect(),
@@ -241,14 +241,14 @@ impl Authorization {
             identifier: super::processing::map_rpc_identifier(
                 crate::try_db_result!(ca_obj.identifier.ok_or("identifier not set"), "Invalid authorization: {}")?
             ),
-            status: match crate::cert_order::AuthorizationStatus::from_i32(ca_obj.status) {
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationPending) => crate::types::authorization::Status::Pending,
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationInvalid) => crate::types::authorization::Status::Invalid,
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationValid) => crate::types::authorization::Status::Valid,
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationDeactivated) => crate::types::authorization::Status::Deactivated,
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationExpired) => crate::types::authorization::Status::Expired,
-                Some(crate::cert_order::AuthorizationStatus::AuthorizationRevoked) => crate::types::authorization::Status::Revoked,
-                None => return Err(crate::internal_server_error!())
+            status: match crate::cert_order::AuthorizationStatus::try_from(ca_obj.status) {
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationPending) => crate::types::authorization::Status::Pending,
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationInvalid) => crate::types::authorization::Status::Invalid,
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationValid) => crate::types::authorization::Status::Valid,
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationDeactivated) => crate::types::authorization::Status::Deactivated,
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationExpired) => crate::types::authorization::Status::Expired,
+                Ok(crate::cert_order::AuthorizationStatus::AuthorizationRevoked) => crate::types::authorization::Status::Revoked,
+                Err(_) => return Err(crate::internal_server_error!())
             },
             expires: crate::util::proto_to_chrono(ca_obj.expires),
             challenges: ca_obj.challenges.into_iter().map(|c| self.challenge_to_json(c, external_uri)).collect::<Result<_, _>>()?,
@@ -260,23 +260,23 @@ impl Authorization {
         &self, ca_obj: crate::cert_order::Challenge, external_uri: &crate::acme::ExternalURL,
     ) -> crate::acme::ACMEResult<crate::types::challenge::Challenge> {
         Ok(crate::types::challenge::Challenge {
-            challenge_type: match crate::cert_order::ChallengeType::from_i32(ca_obj.r#type) {
-                Some(crate::cert_order::ChallengeType::ChallengeHttp01) => crate::types::challenge::Type::HTTP01,
-                Some(crate::cert_order::ChallengeType::ChallengeDns01) => crate::types::challenge::Type::DNS01,
-                Some(crate::cert_order::ChallengeType::ChallengeTlsalpn01) => crate::types::challenge::Type::TLSALPN01,
-                Some(crate::cert_order::ChallengeType::ChallengeOnionCsr01) => crate::types::challenge::Type::OnionCSR01,
-                None => return Err(crate::internal_server_error!())
+            challenge_type: match crate::cert_order::ChallengeType::try_from(ca_obj.r#type) {
+                Ok(crate::cert_order::ChallengeType::ChallengeHttp01) => crate::types::challenge::Type::HTTP01,
+                Ok(crate::cert_order::ChallengeType::ChallengeDns01) => crate::types::challenge::Type::DNS01,
+                Ok(crate::cert_order::ChallengeType::ChallengeTlsalpn01) => crate::types::challenge::Type::TLSALPN01,
+                Ok(crate::cert_order::ChallengeType::ChallengeOnionCsr01) => crate::types::challenge::Type::OnionCSR01,
+                Err(_) => return Err(crate::internal_server_error!())
             },
             url: external_uri.0.join(&rocket::uri!(crate::acme::challenge(
                 crate::util::uuid_as_b64(&self.id),
                 BASE64_URL_SAFE_NO_PAD.encode(ca_obj.id)
             )).to_string()).unwrap().to_string(),
-            status: match crate::cert_order::ChallengeStatus::from_i32(ca_obj.status) {
-                Some(crate::cert_order::ChallengeStatus::ChallengePending) => crate::types::challenge::Status::Pending,
-                Some(crate::cert_order::ChallengeStatus::ChallengeProcessing) => crate::types::challenge::Status::Processing,
-                Some(crate::cert_order::ChallengeStatus::ChallengeValid) => crate::types::challenge::Status::Valid,
-                Some(crate::cert_order::ChallengeStatus::ChallengeInvalid) => crate::types::challenge::Status::Invalid,
-                None => return Err(crate::internal_server_error!())
+            status: match crate::cert_order::ChallengeStatus::try_from(ca_obj.status) {
+                Ok(crate::cert_order::ChallengeStatus::ChallengePending) => crate::types::challenge::Status::Pending,
+                Ok(crate::cert_order::ChallengeStatus::ChallengeProcessing) => crate::types::challenge::Status::Processing,
+                Ok(crate::cert_order::ChallengeStatus::ChallengeValid) => crate::types::challenge::Status::Valid,
+                Ok(crate::cert_order::ChallengeStatus::ChallengeInvalid) => crate::types::challenge::Status::Invalid,
+                Err(_) => return Err(crate::internal_server_error!())
             },
             validated: crate::util::proto_to_chrono(ca_obj.validated),
             error: ca_obj.error.and_then(|errors| crate::util::error_list_to_result(

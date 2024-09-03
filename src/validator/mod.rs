@@ -1,5 +1,6 @@
 use foreign_types::{ForeignType, ForeignTypeRef};
 use std::convert::TryFrom;
+use http_body_util::BodyExt;
 use base64::prelude::*;
 
 pub mod caa;
@@ -13,8 +14,8 @@ pub enum Identifier {
 
 fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<Identifier, tonic::Status> {
     if let Some(identifier) = identifier {
-        Ok(match crate::cert_order::IdentifierType::from_i32(identifier.id_type) {
-            Some(crate::cert_order::IdentifierType::DnsIdentifier) => {
+        Ok(match crate::cert_order::IdentifierType::try_from(identifier.id_type) {
+            Ok(crate::cert_order::IdentifierType::DnsIdentifier) => {
                 let is_wild = identifier.identifier.starts_with("*.");
                 if is_wild {
                     Identifier::Domain(identifier.identifier[2..].to_string(), true)
@@ -22,14 +23,14 @@ fn map_identifier(identifier: Option<crate::cert_order::Identifier>) -> Result<I
                     Identifier::Domain(identifier.identifier, false)
                 }
             }
-            Some(crate::cert_order::IdentifierType::IpIdentifier) => {
+            Ok(crate::cert_order::IdentifierType::IpIdentifier) => {
                 let ip_addr: std::net::IpAddr = match std::str::FromStr::from_str(&identifier.identifier) {
                     Ok(a) => a,
                     Err(_) => return Err(tonic::Status::invalid_argument("Invalid IP address")),
                 };
                 Identifier::IPAddr(ip_addr)
             }
-            Some(crate::cert_order::IdentifierType::EmailIdentifier) => {
+            Ok(crate::cert_order::IdentifierType::EmailIdentifier) => {
                 Identifier::Email(identifier.identifier)
             },
             _ => return Err(tonic::Status::invalid_argument("Invalid identifier type specified")),
@@ -195,11 +196,11 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             return Err(tonic::Status::invalid_argument("hs_priv_key must be 32 bytes long"));
         };
 
-        let validation_method = match crate::cert_order::ValidationMethod::from_i32(req.validation_method) {
-            Some(crate::cert_order::ValidationMethod::Http01) => "http-01",
-            Some(crate::cert_order::ValidationMethod::Dns01) => "dns-01",
-            Some(crate::cert_order::ValidationMethod::TlsAlpn01) => "tls-alpn-01",
-            Some(crate::cert_order::ValidationMethod::OnionCsr01) => "onion-csr-01",
+        let validation_method = match crate::cert_order::ValidationMethod::try_from(req.validation_method) {
+            Ok(crate::cert_order::ValidationMethod::Http01) => "http-01",
+            Ok(crate::cert_order::ValidationMethod::Dns01) => "dns-01",
+            Ok(crate::cert_order::ValidationMethod::TlsAlpn01) => "tls-alpn-01",
+            Ok(crate::cert_order::ValidationMethod::OnionCsr01) => "onion-csr-01",
             _ => return Err(tonic::Status::invalid_argument("Invalid validation method specified")),
         };
 
@@ -328,12 +329,7 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             let resp = match hs_client.get(test_uri).await {
                 Ok(u) => u,
                 Err(err) => {
-                    if err.is_timeout() {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
-                            valid: false,
-                            error: Some(timeout_error),
-                        }));
-                    } else if err.is_connect() {
+                    if err.is_connect() {
                         return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(connect_error),
@@ -347,8 +343,8 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
                 }
             };
 
-            (resp.status(), match hyper::body::to_bytes(resp.into_body()).await {
-                Ok(b) => match String::from_utf8(b.to_vec()) {
+            (resp.status(), match resp.collect().await {
+                Ok(b) => match String::from_utf8(b.to_bytes().to_vec()) {
                     Ok(s) => s,
                     Err(_) => return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                         valid: false,
