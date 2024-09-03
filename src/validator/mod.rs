@@ -245,7 +245,7 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             errors: vec![crate::cert_order::Error {
                 error_type: crate::cert_order::ErrorType::ConnectionError.into(),
                 title: "Validation failed".to_string(),
-                detail: "Connection refused".to_string(),
+                detail: "Invalid URI".to_string(),
                 status: 400,
                 identifier: req.identifier.clone(),
                 instance: None,

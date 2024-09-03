@@ -19,7 +19,7 @@ fn rocket() -> _ {
     info!("Benny OCSP server version {} starting up...", env!("CARGO_PKG_VERSION"));
 
     rocket::build()
-        .attach( rocket_dyn_templates::Template::fairing())
+        .attach(rocket_dyn_templates::Template::fairing())
         .attach(rocket::fairing::AdHoc::try_on_ignite("OCSP Issuer Config", |rocket| async move {
             let issuers_conf = rocket.figment()
                 .extract_inner::<Vec<OCSPIssuerConfig>>("ocsp_issuers")
