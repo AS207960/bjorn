@@ -329,16 +329,17 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             let resp = match hs_client.get(test_uri).await {
                 Ok(u) => u,
                 Err(err) => {
-                    if err.is_connect() {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    debug!("Error connecting to hidden service validation endpoint: {}", err);
+                    return if err.is_connect() {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(connect_error),
-                        }));
+                        }))
                     } else {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(other_error),
-                        }));
+                        }))
                     }
                 }
             };
@@ -367,18 +368,19 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
             let resp = match self.reqwest_client.get(test_uri).send().await {
                 Ok(u) => u,
                 Err(err) => {
-                    if err.is_timeout() {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                    debug!("Error connecting to validation endpoint: {}", err);
+                    return if err.is_timeout() {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(timeout_error),
-                        }));
+                        }))
                     } else if err.is_connect() {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(connect_error),
-                        }));
+                        }))
                     } else if err.is_redirect() {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(crate::cert_order::ErrorResponse {
                                 errors: vec![crate::cert_order::Error {
@@ -391,12 +393,12 @@ impl<S: torrosion::storage::Storage + Send + Sync + 'static> crate::cert_order::
                                     sub_problems: vec![],
                                 }]
                             }),
-                        }));
+                        }))
                     } else {
-                        return Ok(tonic::Response::new(crate::cert_order::ValidationResult {
+                        Ok(tonic::Response::new(crate::cert_order::ValidationResult {
                             valid: false,
                             error: Some(other_error),
-                        }));
+                        }))
                     }
                 }
             };
