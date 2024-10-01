@@ -46,6 +46,11 @@ pub async fn find_hs_caa_record<S: torrosion::storage::Storage + Send + Sync + '
         })?;
 
         onion_caa.caa.split("\n").map(|l| l.trim())
+            .filter_map(|l| if l.starts_with("caa ") {
+                Some(l[4..].trim())
+            } else {
+                None
+            })
             .map(torrosion::hs::second_layer::CAA::from_str).collect::<Result<Vec<_>, _>>()
             .map_err(|_| CAAError::Other(format!("Invalid CAA record")))?
     } else {
